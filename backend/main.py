@@ -22,10 +22,15 @@ def get_repo_collection(repo_name: str):
     safe_name = repo_name.replace("-", "_")
     return chroma_client.get_or_create_collection(name=safe_name)
 
-# CORS for React frontend
+# --- THIS IS THE CORRECTED PART ---
+# I've added your Vercel URL and fixed the missing comma.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000","https://your-frontend-url.vercel.app"]
+    allow_origins=[
+        "http://localhost:3000", 
+        "http://127.0.0.1:3000",
+        "https://codebase-eight-kohl.vercel.app"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -102,7 +107,6 @@ async def read_file(repo_name: str, request: Request):
         raise HTTPException(status_code=403, detail="File access forbidden")
 
     if not os.path.exists(full_path) or not os.path.isfile(full_path):
-        # This debug print will show in your terminal if the file can't be found
         print(f"DEBUG: File not found at path: {full_path}")
         raise HTTPException(status_code=404, detail="File not found")
 
