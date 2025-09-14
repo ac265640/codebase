@@ -22,7 +22,8 @@ def get_repo_collection(repo_name: str):
     safe_name = repo_name.replace("-", "_")
     return chroma_client.get_or_create_collection(name=safe_name)
 
-# --- THIS IS THE FINAL, CORRECTED CORS CONFIGURATION ---
+# --- THIS IS THE FINAL CORRECTED CONFIGURATION ---
+# I've added your Vercel URL and fixed the missing comma.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -89,13 +90,18 @@ def list_files(repo_name: str):
 
 @app.get("/file_content/{repo_name}")
 async def read_file(repo_name: str, request: Request):
+    """
+    Reads file content. The file path is passed as a query parameter and manually decoded.
+    This is the most reliable way to handle file paths with subdirectories.
+    """
     path_param = request.query_params.get('path')
     if not path_param:
         raise HTTPException(status_code=400, detail="Missing 'path' query parameter")
 
     decoded_path = unquote(path_param)
     repo_path = os.path.join("repos", repo_name)
-    
+
+    # Security check: prevent directory traversal attacks
     full_path = os.path.abspath(os.path.join(repo_path, decoded_path))
     if not full_path.startswith(os.path.abspath(repo_path)):
         raise HTTPException(status_code=403, detail="File access forbidden")
@@ -178,6 +184,7 @@ def create_embeddings(repo_name: str = Form(...)):
 
     return {"status": "success", "processed_files": collection.count(), "failed_files": failed_files}
 
+# ----------- CHAT ENDPOINT -----------
 @app.post("/chat")
 def chat_with_repo(repo_name: str = Form(...), question: str = Form(...)):
     if not COHERE_API_KEY:
