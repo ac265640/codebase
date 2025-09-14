@@ -22,14 +22,14 @@ def get_repo_collection(repo_name: str):
     safe_name = repo_name.replace("-", "_")
     return chroma_client.get_or_create_collection(name=safe_name)
 
-# --- THIS IS THE CORRECTED PART ---
+# --- THIS IS THE FINAL CORRECTED CONFIGURATION ---
 # I've added your Vercel URL and fixed the missing comma.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000", 
+        "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "https://codebase-eight-kohl.vercel.app"
+        "https://codebase-eight-kohl.vercel.app"  # Your live frontend URL
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -100,7 +100,7 @@ async def read_file(repo_name: str, request: Request):
 
     decoded_path = unquote(path_param)
     repo_path = os.path.join("repos", repo_name)
-    
+
     # Security check: prevent directory traversal attacks
     full_path = os.path.abspath(os.path.join(repo_path, decoded_path))
     if not full_path.startswith(os.path.abspath(repo_path)):
