@@ -1,4 +1,4 @@
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = "https://codebase-backend-3xk9.onrender.com";
 
 /**
  * Handles the response from the fetch API, throwing an error if the request was not successful.
