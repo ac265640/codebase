@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { cloneRepo, listFiles, readFile } from "./api";
+import { useState, useEffect, useRef } from "react";
+import { cloneRepo, createEmbeddings, chatWithRepo, listFiles } from "./api";
 import {
   Button,
   TextField,
@@ -10,62 +10,111 @@ import {
   ListItem,
   ListItemText,
   Divider,
+  CircularProgress,
+  Chip,
+  Avatar,
+  Card,
+  CardContent,
+  Alert,
+  CssBaseline
 } from "@mui/material";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { materialLight } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { SmartToy, AccountCircle } from '@mui/icons-material';
+import { motion } from 'framer-motion';
+import './App.css'; // For custom scrollbar and new styles
 
-// Helper function to map file extensions to languages
-const getLanguage = (filename) => {
-  const ext = filename.split(".").pop().toLowerCase();
-  switch (ext) {
-    case "py":
-      return "python";
-    case "js":
-      return "javascript";
-    case "ts":
-      return "typescript";
-    case "jsx":
-      return "jsx";
-    case "tsx":
-      return "tsx";
-    case "html":
-      return "html";
-    case "css":
-      return "css";
-    case "json":
-      return "json";
-    case "md":
-      return "markdown";
-    case "java":
-      return "java";
-    default:
-      return "text";
-  }
-};
+// Dark theme
+const darkTheme = createTheme({
+  palette: {
+    mode: 'dark',
+    primary: {
+      main: '#76e4f7',
+    },
+    secondary: {
+      main: '#f7d976',
+    },
+    background: {
+      default: 'transparent',
+      paper: 'rgba(20, 20, 30, 0.8)',
+    },
+    text: {
+      primary: '#f0f0f0',
+      secondary: '#a0a0a0',
+    },
+  },
+  typography: {
+    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    h4: {
+      fontWeight: 700,
+    },
+  },
+});
 
 function App() {
   const [repoUrl, setRepoUrl] = useState("");
   const [repoName, setRepoName] = useState("");
   const [files, setFiles] = useState([]);
-  const [fileContent, setFileContent] = useState("");
-  const [currentFile, setCurrentFile] = useState("");
+  const [status, setStatus] = useState("idle"); // idle, cloning, embedding, ready, error
+  const [errorMessage, setErrorMessage] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
 
-  const handleClone = async () => {
-    const res = await cloneRepo(repoUrl);
-    if (res.status === "success" || res.status === "exists") {
-      const name = repoUrl.split("/").pop().replace(".git", "");
+  const [question, setQuestion] = useState("");
+  const [chatHistory, setChatHistory] = useState([]);
+  const chatEndRef = useRef(null);
+
+  // Auto scroll chat
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory]);
+
+  const handleCloneAndEmbed = async () => {
+    setFiles([]);
+    setChatHistory([]);
+    setErrorMessage("");
+
+    try {
+      setStatus("cloning");
+      const cloneRes = await cloneRepo(repoUrl);
+      const name = cloneRes.repo_name;
       setRepoName(name);
+
       const filesRes = await listFiles(name);
       setFiles(filesRes.children);
-    } else {
-      alert("Error cloning repo: " + res.error);
+
+      setStatus("embedding");
+      await createEmbeddings(name);
+      
+      setStatus("ready");
+      setChatHistory([{
+        sender: 'ai',
+        text: `Repository '${name}' is ready. Ask me anything about the codebase.`
+      }]);
+
+    } catch (error) {
+      setStatus("error");
+      setErrorMessage(error.message || "An unknown error occurred.");
+      console.error(error);
     }
   };
 
-  const handleFileClick = async (path) => {
-    const res = await readFile(repoName, path);
-    setFileContent(res.content);
-    setCurrentFile(path);
+  const handleChat = async () => {
+    if (!question.trim() || !repoName) return;
+
+    const userMessage = { sender: 'user', text: question };
+    setChatHistory(prev => [...prev, userMessage]);
+    setQuestion("");
+    setChatLoading(true);
+
+    try {
+      const res = await chatWithRepo(repoName, question);
+      const aiMessage = { sender: 'ai', text: res.answer, sources: res.sources };
+      setChatHistory(prev => [...prev, aiMessage]);
+    } catch (error) {
+      const errorMessage = { sender: 'ai', text: `Sorry, something went wrong: ${error.message}` };
+      setChatHistory(prev => [...prev, errorMessage]);
+    } finally {
+      setChatLoading(false);
+    }
   };
 
   const renderFiles = (items, parentPath = "") =>
@@ -73,76 +122,150 @@ function App() {
       const fullPath = parentPath ? `${parentPath}/${item.name}` : item.name;
       if (item.type === "folder") {
         return (
-          <Box key={fullPath} sx={{ ml: 2 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: "bold" }}>
-              {item.name}
+          <Box key={fullPath} sx={{ ml: 2, my: 0.5 }}>
+            <Typography variant="body2" sx={{ fontWeight: 'bold', color: darkTheme.palette.text.secondary }}>
+              {item.name}/
             </Typography>
             {renderFiles(item.children, fullPath)}
           </Box>
         );
       } else {
         return (
-          <ListItem
-            key={fullPath}
-            button
-            onClick={() => handleFileClick(fullPath)}
-            sx={{ pl: 4 }}
-          >
-            <ListItemText primary={item.name} />
+          <ListItem key={fullPath} dense sx={{ pl: 4, py: 0 }}>
+            <ListItemText primary={item.name} primaryTypographyProps={{ variant: 'body2', color: darkTheme.palette.text.primary }} />
           </ListItem>
         );
       }
     });
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        🚀 Codebase Companion
-      </Typography>
+    <ThemeProvider theme={darkTheme}>
+      <CssBaseline />
+      <Box sx={{ p: 3, minHeight: '100vh', display: 'flex', flexDirection: 'column', textAlign: 'center' }}>
+        <Typography variant="h4" gutterBottom className="app-title">
+          Codebase Companion
+        </Typography>
+        <Typography variant="subtitle1" color="text.secondary" sx={{ mb: 3, maxWidth: '600px', mx: 'auto' }}>
+          Your AI-powered developer assistant. Paste a public GitHub repository URL below, click "Clone & Embed," and start asking questions about the code.
+        </Typography>
 
-      <Box sx={{ display: "flex", mb: 2 }}>
-        <TextField
-          label="GitHub Repo URL"
-          variant="outlined"
-          value={repoUrl}
-          onChange={(e) => setRepoUrl(e.target.value)}
-          sx={{ width: 400, mr: 2 }}
-        />
-        <Button variant="contained" onClick={handleClone}>
-          Clone Repository
-        </Button>
-      </Box>
-
-      <Box sx={{ display: "flex", gap: 2 }}>
-        <Paper
-          sx={{ width: 300, maxHeight: "70vh", overflowY: "auto", p: 1 }}
-        >
-          <Typography variant="h6">Files</Typography>
-          <Divider sx={{ mb: 1 }} />
-          <List dense>{renderFiles(files)}</List>
-        </Paper>
-
-        <Paper
-          sx={{ flex: 1, p: 2, maxHeight: "70vh", overflowY: "auto" }}
-        >
-          <Typography variant="h6">File Content</Typography>
-          <Divider sx={{ mb: 1 }} />
-          {fileContent ? (
-            <SyntaxHighlighter
-              language={getLanguage(currentFile)}
-              style={materialLight}
-              showLineNumbers
+        <Paper sx={{ p: 2, mb: 2, background: 'rgba(20, 20, 30, 0.8)', backdropFilter: 'blur(10px)', maxWidth: '800px', mx: 'auto', width: '100%' }}>
+          <Box sx={{ display: "flex", alignItems: "center" }}>
+            <TextField
+              label="GitHub Repository URL"
+              variant="outlined"
+              value={repoUrl}
+              onChange={(e) => setRepoUrl(e.target.value)}
+              fullWidth
+              sx={{ mr: 2 }}
+              disabled={status === 'cloning' || status === 'embedding'}
+              className="repo-input"
+            />
+            <Button 
+              variant="contained" 
+              onClick={handleCloneAndEmbed}
+              disabled={status === 'cloning' || status === 'embedding'}
+              sx={{ height: '56px', whiteSpace: 'nowrap' }}
+              className="clone-button"
             >
-              {fileContent}
-            </SyntaxHighlighter>
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              Click a file to view its content
-            </Typography>
-          )}
+              {status === 'cloning' || status === 'embedding' ? <CircularProgress size={24} sx={{ color: 'white', mr: 1 }} /> : null}
+              {status === 'cloning' ? 'Cloning...' : (status === 'embedding' ? 'Embedding...' : 'Clone & Embed')}
+            </Button>
+          </Box>
+          {status === 'error' && <Alert severity="error" sx={{ mt: 2 }}>{errorMessage}</Alert>}
         </Paper>
+
+        <Box sx={{ display: "flex", gap: 2, flex: 1, overflow: 'hidden', textAlign: 'left' }}>
+          {/* Left Panel: File Explorer */}
+          <Paper sx={{ width: 350, overflowY: "auto", p: 2, background: 'rgba(20, 20, 30, 0.8)', backdropFilter: 'blur(10px)' }}>
+            <Typography variant="h6">File Explorer</Typography>
+            <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.2)' }} />
+            {files.length > 0 ? (
+               <List dense>{renderFiles(files)}</List>
+            ) : (
+              <Typography variant="body2" color="text.secondary" sx={{mt: 2, p: 1}}>
+                {status === 'idle' && 'Clone a repository to see its file structure.'}
+                {status === 'cloning' && 'Cloning repository...'}
+                {status === 'embedding' && 'Processing files...'}
+              </Typography>
+            )}
+          </Paper>
+
+          {/* Right Panel: Chat */}
+          <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'rgba(20, 20, 30, 0.8)', backdropFilter: 'blur(10px)' }}>
+            <CardContent sx={{ flex: 1, overflowY: 'auto', p: 2 }}>
+               {chatHistory.map((msg, index) => (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <Box sx={{ display: 'flex', my: 2, alignItems: 'flex-start' }}>
+                      <Avatar
+                        sx={{
+                          bgcolor: msg.sender === 'ai'
+                            ? darkTheme.palette.primary.main
+                            : darkTheme.palette.secondary.main,
+                          mr: 2,
+                          width: 40,
+                          height: 40
+                        }}
+                      >
+                        {msg.sender === 'ai' ? (
+                          <SmartToy fontSize="medium" sx={{ color: "#fff" }} />
+                        ) : (
+                          <AccountCircle fontSize="medium" sx={{ color: "#fff" }} />
+                        )}
+                      </Avatar>
+                      <Box
+                        sx={{
+                          background: msg.sender === 'ai'
+                            ? 'rgba(0,0,0,0.2)'
+                            : 'rgba(247, 217, 118, 0.1)',
+                          p: 1.5,
+                          borderRadius: 2,
+                          width: '100%'
+                        }}
+                      >
+                        <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                          {msg.text}
+                        </Typography>
+                        {msg.sources && msg.sources[0] && (
+                           <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                              <Typography variant="caption" color="text.secondary">Sources:</Typography>
+                              {msg.sources[0].map((source, i) => (
+                                 <Chip key={i} label={source.path} size="small" sx={{ ml: 1, mt: 0.5, background: 'rgba(255,255,255,0.1)' }} />
+                              ))}
+                           </Box>
+                        )}
+                      </Box>
+                    </Box>
+                  </motion.div>
+               ))}
+               {chatLoading && <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', my: 2 }} />}
+               <div ref={chatEndRef} />
+            </CardContent>
+            <Box sx={{ p: 2, borderTop: `1px solid ${darkTheme.palette.divider}` }}>
+              <Box sx={{ display: 'flex' }}>
+                <TextField
+                  placeholder="Ask a question about the codebase..."
+                  variant="outlined"
+                  fullWidth
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && !chatLoading && handleChat()}
+                  disabled={status !== 'ready' || chatLoading}
+                />
+                <Button variant="contained" onClick={handleChat} disabled={status !== 'ready' || chatLoading} sx={{ ml: 1 }}>
+                  Send
+                </Button>
+              </Box>
+            </Box>
+          </Card>
+        </Box>
       </Box>
-    </Box>
+    </ThemeProvider>
   );
 }
 

@@ -1,0 +1,14 @@
+# Python / Backend
+backend/venv/
+backend/__pycache__/
+backend/chroma/
+backend/chroma_db/
+backend/repos/
+
+# Node / Frontend
+frontend/node_modules/
+frontend/build/
+
+# General
+.DS_Store
+.env
