@@ -63,6 +63,7 @@ def clone_repo(repo_url: str = Form(...)):
         )
         return {"status": "success", "path": clone_path, "repo_name": repo_name}
     except subprocess.CalledProcessError as e:
+        logging.error(f"Clone failed: {e.stderr}")
         raise HTTPException(status_code=400, detail=f"Failed to clone repository: {e.stderr}")
 
 # --- File Structure ---
@@ -151,7 +152,7 @@ def send_to_cohere(collection, docs, ids, metas):
             "https://api.cohere.com/v1/embed",
             headers={"Authorization": f"Bearer {COHERE_API_KEY}"},
             json={"texts": docs, "model": "small", "truncate": "END"},
-            timeout=60
+            timeout=120
         )
         res.raise_for_status()
         collection.add(ids=ids, documents=docs, embeddings=res.json()["embeddings"], metadatas=metas)
@@ -206,7 +207,7 @@ CONTEXT:\n{context}\n\nQUESTION:\n{question}\n\nANSWER:"""
             "https://api.cohere.com/v1/chat",
             headers=headers,
             json={"model": "command-r-plus", "message": prompt, "temperature": 0.2},
-            timeout=60
+            timeout=90
         )
         gen_res.raise_for_status()
         answer = gen_res.json().get("text", "Sorry, I couldn't generate a response.")
