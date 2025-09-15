@@ -33,17 +33,21 @@ def get_repo_collection(repo_name: str):
     return chroma_client.get_or_create_collection(name=safe_name)
 
 # --- CORRECT CORS CONFIGURATION ---
+# For development + production safety
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://codebase-eight-kohl.vercel.app"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://codebase-eight-kohl.vercel.app"
-    ],
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],   # allow GET, POST, etc.
+    allow_headers=["*"],   # allow custom headers like Content-Type, Authorization
 )
+
 
 @app.get("/")
 def home():
