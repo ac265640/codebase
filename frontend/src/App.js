@@ -94,30 +94,35 @@ function App() {
       setEmbeddingMessage("Starting embedding process...");
       await createEmbeddings(name);
 
-      const pollInterval = setInterval(async () => {
-        try {
-          const statusRes = await getEmbeddingStatus(name);
-          if (statusRes.status === "processing") {
-            setEmbeddingMessage(statusRes.progress);
-          } else if (statusRes.status === "complete") {
-            clearInterval(pollInterval);
-            setStatus("ready");
-            setEmbeddingMessage("");
-            setChatHistory([{
-              sender: 'ai',
-              text: `Repository '${name}' is ready. Ask me anything about the codebase.`
-            }]);
-          } else if (statusRes.status === "error") {
+      // ✨ CHANGE START: Add a 1-second delay before polling begins.
+      setTimeout(() => {
+        const pollInterval = setInterval(async () => {
+          try {
+            const statusRes = await getEmbeddingStatus(name);
+            if (statusRes.status === "processing") {
+              setEmbeddingMessage(statusRes.progress);
+            } else if (statusRes.status === "complete") {
+              clearInterval(pollInterval);
+              setStatus("ready");
+              setEmbeddingMessage("");
+              setChatHistory([{
+                sender: 'ai',
+                text: `Repository '${name}' is ready. Ask me anything about the codebase.`
+              }]);
+            } else if (statusRes.status === "error") {
+              clearInterval(pollInterval);
+              setStatus("error");
+              setErrorMessage(`Embedding failed: ${statusRes.message}`);
+            }
+          } catch (pollError) {
             clearInterval(pollInterval);
             setStatus("error");
-            setErrorMessage(`Embedding failed: ${statusRes.message}`);
+            setErrorMessage(pollError.message || "Failed to get embedding status.");
           }
-        } catch (pollError) {
-          clearInterval(pollInterval);
-          setStatus("error");
-          setErrorMessage(pollError.message || "Failed to get embedding status.");
-        }
-      }, 3000);
+        }, 3000); // Poll every 3 seconds
+      }, 1000); // Start polling after 1 second
+      // ✨ CHANGE END
+
     } catch (error) {
       setStatus("error");
       setErrorMessage(error.message || "An unknown error occurred.");
