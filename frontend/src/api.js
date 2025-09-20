@@ -1,52 +1,88 @@
-// No changes to API_URL or handleResponse
+const API_URL = "http://127.0.0.1:8000";
 
-const API_URL = "https://codebase-backend-3xk9.onrender.com";
-
+/**
+ * A helper function to handle API responses and errors.
+ * @param {Response} response - The raw response from the fetch call.
+ * @returns {Promise<any>} - The JSON data from the response.
+ * @throws {Error} - Throws an error if the response is not OK.
+ */
 async function handleResponse(response) {
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: "Network response was not ok" }));
-    throw new Error(errorData.detail || errorData.error || `HTTP error! status: ${response.status}`);
+  if (response.ok) {
+    return await response.json();
+  } else {
+    const errorData = await response.json();
+    // FastAPI validation errors are in `detail`, other errors might be in `error`
+    // We also handle cases where the error message might be a nested object
+    let errorMessage = "An unknown error occurred.";
+    if (typeof errorData.error === 'string') {
+        errorMessage = errorData.error;
+    } else if (typeof errorData.error === 'object') {
+        errorMessage = JSON.stringify(errorData.error);
+    } else if (errorData.detail) {
+        errorMessage = typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail);
+    }
+    
+    throw new Error(errorMessage);
   }
-  return response.json();
 }
 
+/**
+ * Clones a GitHub repository via the backend.
+ * @param {string} repoUrl - The full URL of the GitHub repository.
+ * @returns {Promise<any>}
+ */
 export async function cloneRepo(repoUrl) {
   const formData = new FormData();
   formData.append("repo_url", repoUrl);
-  const response = await fetch(`${API_URL}/clone`, { method: "POST", body: formData });
-  return handleResponse(response);
+  const response = await fetch(`${API_URL}/clone`, {
+    method: "POST",
+    body: formData,
+  });
+  const data = await handleResponse(response);
+  if (data.status === 'error') throw new Error(data.error);
+  return data;
 }
 
-export async function listFiles(repoName) {
-  const response = await fetch(`${API_URL}/files/${repoName}`);
-  return handleResponse(response);
-}
-
-export async function readFile(repoName, filePath) {
-  const encodedFilePath = encodeURIComponent(filePath);
-  const response = await fetch(`${API_URL}/file_content/${repoName}?path=${encodedFilePath}`);
-  return handleResponse(response);
-}
-
-// This function now just *starts* the embedding process.
+/**
+ * Triggers the embedding process for a cloned repository.
+ * @param {string} repoName - The name of the repository.
+ * @returns {Promise<any>}
+ */
 export async function createEmbeddings(repoName) {
   const formData = new FormData();
   formData.append("repo_name", repoName);
-  const response = await fetch(`${API_URL}/embed`, { method: "POST", body: formData });
-  return handleResponse(response);
+  const response = await fetch(`${API_URL}/embed`, {
+    method: "POST",
+    body: formData,
+  });
+  const data = await handleResponse(response);
+  if (data.status === 'error') throw new Error(data.error);
+  return data;
 }
 
-// ✨ CHANGE START: New function to poll for status
-export async function getEmbeddingStatus(repoName) {
-  const response = await fetch(`${API_URL}/embed-status/${repoName}`);
-  return handleResponse(response);
+/**
+ * Lists the file structure of a repository.
+ * @param {string} repoName - The name of the repository.
+ * @returns {Promise<any>}
+ */
+export async function listFiles(repoName) {
+  const response = await fetch(`${API_URL}/files/${repoName}`);
+  return await handleResponse(response);
 }
-// ✨ CHANGE END
 
+/**
+ * Sends a question to the chat endpoint for a repository.
+ * @param {string} repoName - The name of the repository.
+ * @param {string} question - The user's question.
+ * @returns {Promise<any>}
+ */
 export async function chatWithRepo(repoName, question) {
   const formData = new FormData();
   formData.append("repo_name", repoName);
   formData.append("question", question);
-  const response = await fetch(`${API_URL}/chat`, { method: "POST", body: formData });
-  return handleResponse(response);
+  const response = await fetch(`${API_URL}/chat`, {
+    method: "POST",
+    body: formData,
+  });
+  return await handleResponse(response);
 }
