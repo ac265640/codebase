@@ -7,6 +7,7 @@ import os
 import json
 import requests
 import chromadb
+import time
 
 # Load environment variables
 load_dotenv()
@@ -182,7 +183,7 @@ def create_embeddings(repo_name: str = Form(...)):
         pass
     collection = get_repo_collection(repo_name)
 
-    batch_size = 96
+    batch_size = 48  # Reduced to stay under Cohere trial rate limit (100k tokens/min)
     docs_batch = []
     ids_batch = []
     metadatas_batch = []
@@ -208,6 +209,7 @@ def create_embeddings(repo_name: str = Form(...)):
             failed_files.extend([{"path": p, "error": str(e)} for p in ids_batch])
         finally:
             docs_batch, ids_batch, metadatas_batch = [], [], []
+            time.sleep(1)  # Rate limit: stay under 100k tokens/min on trial tier
 
     for file_path, content in read_files(repo_path):
         for fp, chunk, idx in chunk_text(content, file_path):
