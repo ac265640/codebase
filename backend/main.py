@@ -118,9 +118,27 @@ def create_embeddings(repo_name: str = Form(...)):
 
     ALLOWED_EXTENSIONS = {".py", ".ipynb", ".js", ".jsx", ".ts", ".tsx", ".html", ".css", ".java", ".go", ".php", ".rb", ".rs", ".c", ".cpp", ".h", ".cs", ".swift", ".kt", ".scala", ".pl", ".pm", ".t", ".pod", ".r", ".sh", ".ps1", ".bat", ".vbs", ".json", ".xml", ".yaml", ".yml", ".sql", ".env", ".cfg", ".ini", ".toml", ".dockerfile", "docker-compose.yml", ".md", ".txt"}
 
+    CHUNK_SIZE = 50    # lines per chunk
+    CHUNK_OVERLAP = 10 # overlap between consecutive chunks
+
+    def chunk_text(content: str, file_path: str):
+        """Split content into overlapping line-based chunks."""
+        lines = content.splitlines()
+        if len(lines) <= CHUNK_SIZE:
+            yield file_path, content, 0
+            return
+        start = 0
+        chunk_idx = 0
+        while start < len(lines):
+            end = min(start + CHUNK_SIZE, len(lines))
+            chunk = "\n".join(lines[start:end])
+            if chunk.strip():
+                yield file_path, chunk, chunk_idx
+            chunk_idx += 1
+            start += CHUNK_SIZE - CHUNK_OVERLAP
+
     def read_files(path):
         for root, dirs, files in os.walk(path):
-            # Exclude .git directory
             if '.git' in dirs:
                 dirs.remove('.git')
             for file in files:
@@ -156,44 +174,21 @@ def create_embeddings(repo_name: str = Form(...)):
                         continue
 
     failed_files = []
+    # Delete existing collection and recreate to avoid stale chunk IDs
+    safe_name = repo_name.replace("-", "_")
+    try:
+        chroma_client.delete_collection(name=safe_name)
+    except Exception:
+        pass
     collection = get_repo_collection(repo_name)
 
-    # Simple batching
-    batch_size = 96  # Cohere's API limit
+    batch_size = 96
     docs_batch = []
     ids_batch = []
     metadatas_batch = []
 
-    for path, content in read_files(repo_path):
-        docs_batch.append(content)
-        ids_batch.append(path)
-        metadatas_batch.append({"path": path})
-
-        if len(docs_batch) >= batch_size:
-            try:
-                # Embed and add the batch
-                res = requests.post(
-                    "https://api.cohere.com/v1/embed",
-                    headers={"Authorization": f"Bearer {COHERE_API_KEY}"},
-                    json={"texts": docs_batch, "model": "small", "truncate": "END"}
-                )
-                res.raise_for_status()  # Raise an exception for bad status codes
-                embeddings = res.json()["embeddings"]
-                collection.add(
-                    ids=ids_batch,
-                    documents=docs_batch,
-                    embeddings=embeddings,
-                    metadatas=metadatas_batch
-                )
-            except requests.exceptions.RequestException as e:
-                print(f"Failed to embed batch: {e}")
-                failed_files.extend([{"path": p, "error": str(e)} for p in ids_batch])
-            finally:
-                # Clear batches
-                docs_batch, ids_batch, metadatas_batch = [], [], []
-
-    # Process any remaining files in the last batch
-    if docs_batch:
+    def flush_batch():
+        nonlocal docs_batch, ids_batch, metadatas_batch
         try:
             res = requests.post(
                 "https://api.cohere.com/v1/embed",
@@ -209,12 +204,27 @@ def create_embeddings(repo_name: str = Form(...)):
                 metadatas=metadatas_batch
             )
         except requests.exceptions.RequestException as e:
-            print(f"Failed to embed final batch: {e}")
+            print(f"Failed to embed batch: {e}")
             failed_files.extend([{"path": p, "error": str(e)} for p in ids_batch])
+        finally:
+            docs_batch, ids_batch, metadatas_batch = [], [], []
+
+    for file_path, content in read_files(repo_path):
+        for fp, chunk, idx in chunk_text(content, file_path):
+            chunk_id = f"{fp}::chunk_{idx}"
+            docs_batch.append(chunk)
+            ids_batch.append(chunk_id)
+            metadatas_batch.append({"path": fp, "chunk": idx})
+
+            if len(docs_batch) >= batch_size:
+                flush_batch()
+
+    if docs_batch:
+        flush_batch()
 
     return {
         "status": "success",
-        "processed_files": collection.count(),
+        "processed_chunks": collection.count(),
         "failed_files": failed_files
     }
 
