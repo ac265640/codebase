@@ -119,6 +119,11 @@ def create_embeddings(repo_name: str = Form(...)):
 
     ALLOWED_EXTENSIONS = {".py", ".ipynb", ".js", ".jsx", ".ts", ".tsx", ".html", ".css", ".java", ".go", ".php", ".rb", ".rs", ".c", ".cpp", ".h", ".cs", ".swift", ".kt", ".scala", ".pl", ".pm", ".t", ".pod", ".r", ".sh", ".ps1", ".bat", ".vbs", ".json", ".xml", ".yaml", ".yml", ".sql", ".env", ".cfg", ".ini", ".toml", ".dockerfile", "docker-compose.yml", ".md", ".txt"}
 
+    # Skip auto-generated / minified files that are huge but semantically useless
+    BLOCKED_FILENAMES = {"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "Pipfile.lock",
+                         "Gemfile.lock", "composer.lock", ".min.js", ".min.css"}
+    MAX_FILE_BYTES = 100_000  # skip files larger than 100KB
+
     CHUNK_SIZE = 50    # lines per chunk
     CHUNK_OVERLAP = 10 # overlap between consecutive chunks
 
@@ -148,6 +153,16 @@ def create_embeddings(repo_name: str = Form(...)):
                     continue
 
                 file_path = os.path.join(root, file)
+
+                # Skip blocked filenames (lock files, minified assets)
+                if file in BLOCKED_FILENAMES or any(file.endswith(b) for b in BLOCKED_FILENAMES):
+                    print(f"Skipping blocked file: {file_path}")
+                    continue
+
+                # Skip files that are too large to embed efficiently
+                if os.path.getsize(file_path) > MAX_FILE_BYTES:
+                    print(f"Skipping oversized file ({os.path.getsize(file_path)} bytes): {file_path}")
+                    continue
 
                 if ext == ".ipynb":
                     try:
