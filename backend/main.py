@@ -238,7 +238,6 @@ def chat_with_repo(repo_name: str = Form(...), question: str = Form(...)):
 
 
     headers = {"Authorization": f"Bearer {COHERE_API_KEY}"}
-    results = {}
     try:
         # Step 1: embed user's question
         embed_res = requests.post(
