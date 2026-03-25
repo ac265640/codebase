@@ -1,6 +1,6 @@
 # CodexAI — Chat with Any GitHub Codebase
 
-> A RAG-powered developer tool that lets you clone any GitHub repository and ask natural language questions about it — powered by Cohere embeddings, ChromaDB, and FastAPI.
+> A RAG powered developer tool that lets you clone any GitHub repository and ask natural language questions about it — powered by Cohere embeddings, ChromaDB, and FastAPI.
 
 ---
 
