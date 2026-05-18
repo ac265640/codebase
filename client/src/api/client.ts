@@ -8,10 +8,22 @@ const api = axios.create({
 
 let refreshing = false;
 let queue: Array<() => void> = [];
+let slowRequestTimer: ReturnType<typeof setTimeout> | null = null;
+
+api.interceptors.request.use(config => {
+  slowRequestTimer = setTimeout(() => {
+    window.dispatchEvent(new CustomEvent('api-slow'));
+  }, 5000);
+  return config;
+});
 
 api.interceptors.response.use(
-  res => res,
+  res => { 
+    if (slowRequestTimer) clearTimeout(slowRequestTimer); 
+    return res; 
+  },
   async error => {
+    if (slowRequestTimer) clearTimeout(slowRequestTimer);
     if (error.response?.status !== 401 || error.config._retry) {
       return Promise.reject(error);
     }
