@@ -1,124 +1,139 @@
-# CodexAI — Chat with Any GitHub Codebase
+# CodexAI
 
-> A RAG powered developer tool that lets you clone any GitHub repository and ask natural language questions about it — powered by Cohere embeddings, ChromaDB, and FastAPI.
+**RAG-powered conversational assistant for GitHub codebases.**
 
----
+CodexAI allows you to paste any public GitHub repository URL, instantly clone and embed its codebase, and interact with it through a chat interface. It provides detailed answers with direct source citations and includes a complete file explorer.
 
-## Problem
+## Live Demo
+🚀 [View Live on Vercel](https://your-vercel-url.vercel.app/)
 
-When you land on an unfamiliar codebase — whether for a code review, debugging, or onboarding — you waste hours hunting through files just to answer simple questions like *"Where is authentication handled?"* or *"How does the data pipeline work?"*
+## Architecture
 
-Traditional search (Ctrl+F, `grep`) is keyword-only and gives you zero understanding of *why* code does what it does.
-
-**CodexAI solves this**: clone a repo, embed it once, then just ask questions — and get answers grounded in the actual code.
-
----
-
-## Approach
-
-The core pipeline is a classic **RAG (Retrieval-Augmented Generation)** architecture:
-
+```text
+┌─────────────────────────────────────────────┐
+│   React + Vite + TypeScript + Tailwind      │
+│   Deployed: Vercel (free)                   │
+└──────────────────┬──────────────────────────┘
+                   │ HTTPS + WebSocket
+┌──────────────────▼──────────────────────────┐
+│   Express + Node.js + TypeScript            │
+│   Auth | Repos | Chat | Socket.IO           │
+│   + Cohere SDK + ChromaDB SDK (JS)          │
+│   Deployed: Render (free web service)       │
+│   Persistent disk: /app/data (1GB)          │
+└──────────┬──────────────────────────────────┘
+           │
+┌──────────▼──────────────────────────────────┐
+│   MongoDB Atlas M0 (free)                   │
+│   Users | Repositories | ChatSessions       │
+└─────────────────────────────────────────────┘
 ```
-GitHub Repo → File Parsing → Chunking → Cohere Embeddings
-                                              ↓
-                                        ChromaDB (vector store)
-                                              ↓
-User Question → Embed Question → Top-K Retrieval → Cohere LLM → Answer
-```
 
-### Stack
+## Tech Stack
 
-| Layer | Technology | Why |
-|---|---|---|
-| **API** | FastAPI | Async-ready, auto-docs, fast to build |
-| **Embeddings** | Cohere `embed-small` | Free tier, good semantic quality for code |
-| **Vector Store** | ChromaDB (persistent) | Local, no infra, SQL-like querying |
-| **LLM** | Cohere `command-nightly` | Strong instruction-following |
-| **Frontend** | React | Component-based, easy file tree rendering |
+| Component | Technology | Description |
+|-----------|-----------|-------------|
+| **Frontend** | React, Vite, Tailwind CSS, shadcn/ui | Fast, modern client with custom UI components. |
+| **Backend** | Express, Node.js, TypeScript | REST API + Socket.IO for real-time progress. |
+| **Database** | MongoDB Atlas (M0 Free Tier) | Stores users, repo metadata, and chat history. |
+| **Vector DB** | ChromaDB (Local/Persistent) | Stores embeddings for semantic search. |
+| **LLM / Embeddings** | Cohere API | `embed-english-light-v3.0` & `command-r` models. |
+| **Deployment** | Vercel (Frontend), Render (Backend) | Free-tier hosting. |
 
-### API Endpoints
+## Features
+- **JWT Authentication**: Secure user registration and login with HTTP-only cookies and automatic token refresh.
+- **GitHub Ingestion**: Clone, parse, and embed any public GitHub repository.
+- **RAG-Powered Q&A**: Ask complex questions about the code and get precise answers backed by source citations.
+- **Real-Time Progress**: Watch the ingestion pipeline (Cloning → Parsing → Embedding) live via Socket.IO.
+- **Persistent Chat**: Chat history is saved per repository so you never lose context.
+- **Interactive File Explorer**: Browse the directory structure and view raw code with a built-in syntax viewer.
 
-- `POST /clone` — Clone a GitHub repo to local disk
-- `GET /files/{repo_name}` — Traverse and return directory tree
-- `GET /file_content/{repo_name}/{file_path}` — Read raw file content
-- `POST /embed` — Parse all code files, batch-embed (96/batch), store in ChromaDB
-- `POST /chat` — Embed question → retrieve top-5 chunks → prompt LLM → return answer + sources
+## Local Development Setup
 
----
+### Prerequisites
+- Node.js 18+
+- Git
+- MongoDB URI (local or Atlas)
+- Cohere API Key
 
-## Iterations
-
-### v0 — Proof of Concept
-- Hardcoded a single repo path, manually ran embedding once
-- Used a single big prompt with all file contents pasted in — hit token limits instantly
-- Realised I needed chunking and retrieval, not brute-force context stuffing
-
-### v1 — Basic RAG
-- Introduced ChromaDB for vector storage
-- Used Cohere embeddings for both documents and queries
-- Simple `/embed` + `/chat` flow worked end-to-end for small repos
-- **Problem**: No batching — Cohere API has a 96-text-per-request limit, blew up on larger repos
-
-### v2 — Production-Ready Batching + File Type Support
-- Added batch processing (96 docs/batch) with proper error handling per batch
-- Added support for `.ipynb` (Jupyter notebooks) by extracting only code cells from JSON
-- Added fallback to `README.md` if vector retrieval returns no results
-- **Bug fixed**: `results = {}` was initialized before the try block, which caused the `sources` field to return empty even on successful queries — moved initialization inside the try block after the actual query
-
-### v3 — Multi-Repo Support
-- Each repo gets its own ChromaDB collection (keyed by repo name)
-- `/clone` checks for existing clones to avoid re-downloading
-- Frontend supports switching between multiple loaded repos
-
----
-
-## Key Design Choices
-
-**1. ChromaDB over Pinecone/Weaviate**
-Kept the stack local and zero-infra. For a dev tool used by one person or a small team, spinning up a cloud vector DB adds latency and cost. ChromaDB's persistent client gives the same semantic search with a single line of setup.
-
-**2. Cohere over OpenAI**
-The free tier of Cohere's embedding API is generous enough to embed entire medium-sized codebases without paying. `embed-small` produces 1024-dim vectors — more than sufficient for code similarity.
-
-**3. File-level chunking (not line-level)**
-Code files are semantically coherent units. Splitting by line or token would break function context across chunks, worsening retrieval quality. File-level chunks keep logical context intact.
-
-**4. Notebook parsing**
-`.ipynb` files are JSON — not plain text. Naively embedding the raw JSON gives terrible results. I extract only `cell_type == "code"` cells and join them, so the embedding represents actual code, not notebook metadata.
-
-**5. RAG fallback chain**
-If vector retrieval returns nothing (new repo, sparse embedding), the system falls back to the repo's README for context rather than hallucinating. This prevents confident wrong answers.
-
----
-
-## Daily Time Commitment
-
-Built over ~2 weeks alongside college coursework. Typical time was **2–3 hours/day** on active build days, with lighter days (~30 min) for debugging and testing.
-
----
-
-## Running Locally
-
+### 1. Clone & Setup Backend
 ```bash
-# Backend
-cd backend
-pip install -r requirements.txt
-echo "COHERE_API_KEY=your_key_here" > .env
-uvicorn main:app --reload
-
-# Frontend
-cd frontend
+git clone https://github.com/ac265640/codebase.git codexai
+cd codexai/server
+cp .env.example .env
+```
+Fill out the variables in `server/.env`:
+```env
+PORT=5001
+MONGODB_URI=your_mongodb_connection_string
+JWT_SECRET=your_jwt_secret
+JWT_REFRESH_SECRET=your_refresh_secret
+COHERE_API_KEY=your_cohere_key
+CHROMA_PERSIST_PATH=./chroma_db
+REPOS_DIR=./repos
+CLIENT_URL=http://localhost:5174
+NODE_ENV=development
+```
+Start the backend:
+```bash
 npm install
-npm start
+npm run dev
 ```
 
-The frontend runs on `http://localhost:3000`, backend on `http://localhost:8000`.
+### 2. Setup Frontend
+In a new terminal:
+```bash
+cd codexai/client
+cp .env.example .env
+```
+Ensure `client/.env` has:
+```env
+VITE_API_URL=http://localhost:5001
+VITE_SOCKET_URL=http://localhost:5001
+```
+Start the frontend:
+```bash
+npm install
+npm run dev
+```
 
----
+The app will be available at `http://localhost:5174`.
 
-## What I'd Build Next
+## Deployment Guide
 
-- **Chunk by function/class** using AST parsing (`tree-sitter`) for better retrieval granularity
-- **Re-ranking** with Cohere's rerank API before passing context to the LLM
-- **Streaming responses** via SSE so answers appear token-by-token
-- **Persistent chat history** per repo using a SQLite session store
+### 1. MongoDB Atlas
+1. Create a free M0 cluster at [MongoDB Cloud](https://cloud.mongodb.com).
+2. Go to **Database Access** and create a user.
+3. Go to **Network Access** and add `0.0.0.0/0` (Render IPs are dynamic).
+4. Copy your connection string and replace `<password>`.
+
+### 2. Render (Backend)
+1. Push the code to GitHub.
+2. Go to [Render](https://render.com) and create a new **Web Service**.
+3. Connect your repository. Render will automatically detect `render.yaml`.
+4. Fill in the required environment variables in the Render dashboard:
+   - `MONGODB_URI`
+   - `JWT_SECRET`
+   - `JWT_REFRESH_SECRET`
+   - `COHERE_API_KEY`
+   - *Note: Leave `CLIENT_URL` blank for now.*
+
+### 3. Vercel (Frontend)
+1. Go to [Vercel](https://vercel.com) and import the repository.
+2. Set the **Root Directory** to `client`.
+3. Add environment variables:
+   - `VITE_API_URL` = `https://<your-render-app>.onrender.com`
+   - `VITE_SOCKET_URL` = `https://<your-render-app>.onrender.com`
+4. Deploy.
+
+### 4. Finalize CORS
+1. Copy the URL Vercel gives you (e.g., `https://codexai.vercel.app`).
+2. Go back to your Render dashboard.
+3. Add the `CLIENT_URL` environment variable and set it to your Vercel URL.
+4. Manually trigger a deploy on Render to pick up the new CORS configuration.
+
+## Free Tier Limits & Considerations
+- **Cohere API**: 1,000 calls/month on the free tier.
+- **Render**: Free web services spin down after 15 minutes of inactivity. The first request after sleeping may take ~30 seconds (CodexAI displays a "waking up" banner when this happens).
+- **MongoDB Atlas**: M0 tier is limited to 512MB storage.
+- **ChromaDB**: Vectors are stored persistently on a 1GB Render disk mounted at `/app/data`.

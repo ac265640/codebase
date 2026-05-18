@@ -25,3 +25,10 @@ process.on('SIGTERM', async () => {
 });
 
 start().catch(console.error);
+
+import mongoose from 'mongoose';
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received — shutting down');
+  await mongoose.connection.close();
+  process.exit(0);
+});
