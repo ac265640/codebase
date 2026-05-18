@@ -1,15 +1,24 @@
-# Python / Backend
-backend/venv/
-backend/__pycache__/
-backend/chroma/
-backend/chroma_db/
-backend/repos/
+# Python artifacts (FastAPI removed)
+__pycache__/
+*.pyc
+venv/
+.venv/
 
-# Node / Frontend
-frontend/node_modules/
-frontend/build/
+# Node
+node_modules/
+dist/
 
-# General
-.DS_Store
+# Env files — never commit secrets
 .env
+*.env.local
+.env.production
+
+# Repos and ChromaDB (runtime data)
+server/repos/
+server/chroma_db/
+backend/chroma/
 repos/
+
+# OS
+.DS_Store
+Thumbs.db

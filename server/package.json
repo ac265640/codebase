@@ -1,0 +1,40 @@
+{
+  "name": "codexai-server",
+  "version": "1.0.0",
+  "description": "CodexAI Express + Node.js backend",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongoose": "^8.2.0",
+    "jsonwebtoken": "^9.0.2",
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express-rate-limit": "^7.2.0",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "socket.io": "^4.7.5",
+    "cohere-ai": "^7.10.0",
+    "chromadb": "^1.8.1",
+    "simple-git": "^3.23.0",
+    "glob": "^10.3.12"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.3",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.12.5",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cookie-parser": "^1.4.7",
+    "@types/morgan": "^1.9.9",
+    "@types/glob": "^8.1.0",
+    "@types/cors": "^2.8.17",
+    "ts-node-dev": "^2.0.0"
+  }
+}

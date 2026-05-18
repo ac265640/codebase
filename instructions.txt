@@ -1,0 +1,2025 @@
+# CodexAI — MERN + AI SaaS Transformation
+# MASTER PROMPT FOR ANTIGRAVITY
+# Feed this once. The agent executes autonomously, day by day.
+
+---
+
+## WHO YOU ARE & WHAT YOU ARE DOING
+
+You are an autonomous coding agent with full context of the CodexAI repository.
+
+This repo is currently a basic RAG chatbot tool built with:
+- **Backend**: FastAPI (Python) — repo cloning, file parsing, Cohere embeddings, ChromaDB, chat
+- **Frontend**: React (basic) — minimal UI, no auth, no user system
+- **AI**: Cohere `embed-small` + `command-nightly`, ChromaDB persistent local store
+
+**Your job**: Transform this into a production-grade MERN + AI SaaS platform. You will
+replace FastAPI entirely with Express + Node.js. You will keep the AI logic (Cohere +
+ChromaDB) but reimplement it using their official JavaScript/TypeScript SDKs. You will
+add JWT authentication, MongoDB, real-time Socket.IO progress, chat history, a
+professional React frontend, and deploy everything on free-tier infrastructure.
+
+You work day by day. Complete every task in a day before starting the next. At the end
+of each day, the app must be in a fully runnable state. After each day passes its
+checkpoint, commit: `git commit -m "Day N complete: <summary>"`.
+
+---
+
+## WHAT YOU ARE NOT BUILDING (DO NOT IMPLEMENT THESE)
+
+- Google OAuth / Passport.js
+- Billing, Stripe, subscription plans, plan enforcement
+- API key system for external programmatic access
+- Usage metering, UsageLog model, /api/usage routes
+- Email OTP verification, Nodemailer
+- Gemini fallback LLM (Cohere free tier is sufficient for demo)
+- Bull queues, Redis (not available on Render free tier)
+- Multi-LLM provider badges on the frontend
+- Docker (docker-compose for local is fine, but not required)
+
+If at any point you find yourself implementing any of the above, stop and remove it.
+
+---
+
+## FINAL ARCHITECTURE
+
+```
+┌─────────────────────────────────────────────┐
+│   React + Vite + TypeScript + Tailwind       │
+│   Deployed: Vercel (free)                    │
+└──────────────────┬──────────────────────────┘
+                   │ HTTPS + WebSocket
+┌──────────────────▼──────────────────────────┐
+│   Express + Node.js + TypeScript             │
+│   Auth | Repos | Chat | Socket.IO            │
+│   + Cohere SDK + ChromaDB SDK (JS)           │
+│   Deployed: Render (free web service)        │
+│   Persistent disk: /app/chroma_db (1GB)      │
+└──────────┬───────────────────────────────────┘
+           │
+┌──────────▼───────────────────────────────────┐
+│   MongoDB Atlas M0 (free)                    │
+│   Users | Repositories | ChatSessions        │
+└──────────────────────────────────────────────┘
+```
+
+Two deployed services. One database. No Python in production.
+
+---
+
+## ENVIRONMENT VARIABLES
+
+### `/server/.env`
+```
+PORT=5000
+MONGODB_URI=mongodb+srv://<user>:<pass>@cluster0.mongodb.net/codexai
+JWT_SECRET=<64 char random string>
+JWT_REFRESH_SECRET=<64 char random string>
+COHERE_API_KEY=<from cohere.com free tier>
+CHROMA_PERSIST_PATH=./chroma_db
+REPOS_DIR=./repos
+CLIENT_URL=http://localhost:3000
+NODE_ENV=development
+```
+
+### `/client/.env`
+```
+VITE_API_URL=http://localhost:5000
+VITE_SOCKET_URL=http://localhost:5000
+```
+
+### `/server/.env.production` (set these as Render env vars, not in file)
+```
+CLIENT_URL=https://your-app.vercel.app
+NODE_ENV=production
+CHROMA_PERSIST_PATH=/app/chroma_db
+REPOS_DIR=/app/repos
+```
+
+### `/client/.env.production`
+```
+VITE_API_URL=https://your-server.onrender.com
+VITE_SOCKET_URL=https://your-server.onrender.com
+```
+
+Add all `.env` files to `.gitignore`. Create `.env.example` files with keys but no values.
+
+---
+
+## MONOREPO STRUCTURE
+
+Reorganize the entire repo into this structure on Day 1 before writing any new code:
+
+```
+codexai/
+├── client/                  ← React frontend
+│   ├── src/
+│   ├── public/
+│   ├── index.html
+│   ├── vite.config.ts
+│   ├── tailwind.config.ts
+│   ├── tsconfig.json
+│   ├── package.json
+│   ├── .env
+│   ├── .env.example
+│   └── vercel.json
+├── server/                  ← Express backend (replaces FastAPI entirely)
+│   ├── src/
+│   │   ├── app.ts
+│   │   ├── server.ts
+│   │   ├── config/
+│   │   ├── models/
+│   │   ├── routes/
+│   │   ├── middleware/
+│   │   ├── services/
+│   │   └── utils/
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── .env
+│   ├── .env.example
+│   └── render.yaml
+├── .gitignore
+└── README.md
+```
+
+The old FastAPI `main.py`, `requirements.txt` and Python files are deleted after their
+logic is ported to TypeScript services on Day 2.
+
+---
+
+## DAY 1 — Monorepo Setup + Express Skeleton + DB Connection
+
+**Goal**: Repo restructured. Express server running. MongoDB connected. All models defined.
+FastAPI still running in parallel (don't delete it yet — port logic day by day in Day 2).
+
+### Task 1.1 — Restructure repo
+
+Move existing React files into `client/`. Create `server/` from scratch. Keep FastAPI
+files at root temporarily — they will be deleted at end of Day 2 once ported.
+
+### Task 1.2 — Initialize Express server
+
+```bash
+cd server
+npm init -y
+npm install express mongoose jsonwebtoken bcryptjs cookie-parser cors dotenv \
+  express-rate-limit helmet morgan socket.io cohere-ai chromadb simple-git glob
+npm install -D typescript @types/express @types/node @types/jsonwebtoken \
+  @types/bcryptjs @types/cookie-parser @types/morgan @types/glob ts-node-dev
+npx tsc --init
+```
+
+`tsconfig.json` — set exactly:
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true
+  }
+}
+```
+
+`package.json` scripts:
+```json
+"scripts": {
+  "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+  "build": "tsc",
+  "start": "node dist/server.ts"
+}
+```
+
+### Task 1.3 — `server/src/config/db.ts`
+
+```typescript
+import mongoose from 'mongoose';
+
+export async function connectDB(): Promise<void> {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) throw new Error('MONGODB_URI not set');
+  await mongoose.connect(uri);
+  console.log('MongoDB connected');
+}
+```
+
+### Task 1.4 — `server/src/server.ts`
+
+```typescript
+import dotenv from 'dotenv';
+dotenv.config();
+
+import http from 'http';
+import { app } from './app';
+import { connectDB } from './config/db';
+import { initSocket } from './services/socketManager';
+
+const PORT = process.env.PORT || 5000;
+
+async function start() {
+  await connectDB();
+  const httpServer = http.createServer(app);
+  initSocket(httpServer);
+  httpServer.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
+
+start().catch(console.error);
+```
+
+### Task 1.5 — `server/src/app.ts`
+
+```typescript
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
+
+import { authRouter } from './routes/auth';
+import { reposRouter } from './routes/repos';
+import { chatRouter } from './routes/chat';
+import { userRouter } from './routes/user';
+
+export const app = express();
+
+app.use(helmet());
+app.use(cors({
+  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+}));
+app.use(morgan('dev'));
+app.use(express.json());
+app.use(cookieParser());
+
+// Global rate limit — 200 requests per 15 min per IP
+app.use(rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
+
+// Chat-specific rate limit — 10 per minute (LLM calls are expensive)
+app.use('/api/chat', rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+}));
+
+app.use('/api/auth', authRouter);
+app.use('/api/repos', reposRouter);
+app.use('/api/chat', chatRouter);
+app.use('/api/user', userRouter);
+
+app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+
+// Global error handler
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(err.stack);
+  res.status(500).json({ error: err.message || 'Internal server error' });
+});
+```
+
+### Task 1.6 — Mongoose Models
+
+**`server/src/models/User.ts`**:
+```typescript
+import mongoose, { Document, Schema } from 'mongoose';
+
+export interface IUser extends Document {
+  _id: mongoose.Types.ObjectId;
+  email: string;
+  passwordHash: string;
+  displayName: string;
+  avatar?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const UserSchema = new Schema<IUser>({
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  passwordHash: { type: String, required: true },
+  displayName: { type: String, required: true, trim: true },
+  avatar: { type: String },
+}, { timestamps: true });
+
+export const User = mongoose.model<IUser>('User', UserSchema);
+```
+
+**`server/src/models/Repository.ts`**:
+```typescript
+import mongoose, { Document, Schema } from 'mongoose';
+
+export type EmbedStatus = 'pending' | 'processing' | 'done' | 'failed';
+
+export interface IRepository extends Document {
+  _id: mongoose.Types.ObjectId;
+  userId: mongoose.Types.ObjectId;
+  repoUrl: string;
+  repoName: string;
+  repoSlug: string;          // sanitized, used as ChromaDB collection key suffix
+  embeddingStatus: EmbedStatus;
+  embeddingProgress: number; // 0-100
+  fileCount: number;
+  chunkCount: number;
+  errorMessage?: string;
+  lastEmbeddedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const RepositorySchema = new Schema<IRepository>({
+  userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  repoUrl: { type: String, required: true },
+  repoName: { type: String, required: true },
+  repoSlug: { type: String, required: true },
+  embeddingStatus: {
+    type: String,
+    enum: ['pending', 'processing', 'done', 'failed'],
+    default: 'pending',
+  },
+  embeddingProgress: { type: Number, default: 0 },
+  fileCount: { type: Number, default: 0 },
+  chunkCount: { type: Number, default: 0 },
+  errorMessage: { type: String },
+  lastEmbeddedAt: { type: Date },
+}, { timestamps: true });
+
+// One user can't have the same repo slug twice
+RepositorySchema.index({ userId: 1, repoSlug: 1 }, { unique: true });
+
+export const Repository = mongoose.model<IRepository>('Repository', RepositorySchema);
+```
+
+**`server/src/models/ChatSession.ts`**:
+```typescript
+import mongoose, { Document, Schema } from 'mongoose';
+
+export interface IMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  sources: Array<{ file: string; preview: string }>;
+  createdAt: Date;
+}
+
+export interface IChatSession extends Document {
+  _id: mongoose.Types.ObjectId;
+  userId: mongoose.Types.ObjectId;
+  repoId: mongoose.Types.ObjectId;
+  title: string;
+  messages: IMessage[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const MessageSchema = new Schema<IMessage>({
+  role: { type: String, enum: ['user', 'assistant'], required: true },
+  content: { type: String, required: true },
+  sources: [{ file: String, preview: String }],
+  createdAt: { type: Date, default: Date.now },
+}, { _id: false });
+
+const ChatSessionSchema = new Schema<IChatSession>({
+  userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  repoId: { type: Schema.Types.ObjectId, ref: 'Repository', required: true },
+  title: { type: String, default: 'New Chat' },
+  messages: [MessageSchema],
+}, { timestamps: true });
+
+export const ChatSession = mongoose.model<IChatSession>('ChatSession', ChatSessionSchema);
+```
+
+### Task 1.7 — Express Request type extension
+
+Create `server/src/types/express/index.d.ts`:
+```typescript
+import { IUser } from '../../models/User';
+
+declare global {
+  namespace Express {
+    interface Request {
+      user: IUser;
+    }
+  }
+}
+```
+
+### Task 1.8 — Token utility
+
+`server/src/utils/tokens.ts`:
+```typescript
+import jwt from 'jsonwebtoken';
+
+const ACCESS_SECRET = process.env.JWT_SECRET!;
+const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET!;
+
+export function signAccessToken(userId: string): string {
+  return jwt.sign({ id: userId }, ACCESS_SECRET, { expiresIn: '15m' });
+}
+
+export function signRefreshToken(userId: string): string {
+  return jwt.sign({ id: userId }, REFRESH_SECRET, { expiresIn: '7d' });
+}
+
+export function verifyAccessToken(token: string): { id: string } {
+  return jwt.verify(token, ACCESS_SECRET) as { id: string };
+}
+
+export function verifyRefreshToken(token: string): { id: string } {
+  return jwt.verify(token, REFRESH_SECRET) as { id: string };
+}
+
+export function setTokenCookies(res: import('express').Response, userId: string) {
+  const access = signAccessToken(userId);
+  const refresh = signRefreshToken(userId);
+  const isProd = process.env.NODE_ENV === 'production';
+
+  res.cookie('access_token', access, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
+    maxAge: 15 * 60 * 1000,
+  });
+  res.cookie('refresh_token', refresh, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+}
+
+export function clearTokenCookies(res: import('express').Response) {
+  res.clearCookie('access_token');
+  res.clearCookie('refresh_token');
+}
+```
+
+### Task 1.9 — Async job queue (replaces Bull/Redis)
+
+`server/src/utils/jobQueue.ts`:
+```typescript
+// In-process async job queue. No Redis needed. Works on Render free tier.
+// Jobs run one at a time. Failed jobs don't block the queue.
+
+type JobFn = () => Promise<void>;
+
+interface Job {
+  id: string;
+  fn: JobFn;
+  status: 'queued' | 'running' | 'done' | 'failed';
+  error?: string;
+  createdAt: number;
+}
+
+const queue: Job[] = [];
+let running = false;
+
+async function tick(): Promise<void> {
+  if (running) return;
+  const job = queue.find(j => j.status === 'queued');
+  if (!job) return;
+
+  running = true;
+  job.status = 'running';
+
+  try {
+    await job.fn();
+    job.status = 'done';
+  } catch (err) {
+    job.status = 'failed';
+    job.error = String(err);
+    console.error(`Job ${job.id} failed:`, err);
+  } finally {
+    running = false;
+    setTimeout(tick, 300);
+  }
+}
+
+export function enqueue(id: string, fn: JobFn): void {
+  // Prevent duplicate jobs for same id
+  if (queue.find(j => j.id === id && j.status !== 'failed' && j.status !== 'done')) {
+    return;
+  }
+  queue.push({ id, fn, status: 'queued', createdAt: Date.now() });
+  tick();
+}
+
+// Clean stale jobs every 10 minutes
+setInterval(() => {
+  const cutoff = Date.now() - 10 * 60 * 1000;
+  for (let i = queue.length - 1; i >= 0; i--) {
+    if ((queue[i].status === 'done' || queue[i].status === 'failed')
+        && queue[i].createdAt < cutoff) {
+      queue.splice(i, 1);
+    }
+  }
+}, 10 * 60 * 1000);
+```
+
+**Day 1 Checkpoint**:
+```bash
+cd server && npm run dev
+# Must see: "MongoDB connected" and "Server running on port 5000"
+# curl http://localhost:5000/api/health
+# Must return: { "status": "ok" }
+```
+
+---
+
+## DAY 2 — AI Services + Repos Routes (Port FastAPI → Express)
+
+**Goal**: All AI logic ported to TypeScript services. `/api/repos` routes fully working.
+Real-time embed progress via Socket.IO. FastAPI deleted at end of this day.
+
+### Task 2.1 — Socket.IO manager
+
+`server/src/services/socketManager.ts`:
+```typescript
+import { Server } from 'socket.io';
+import { Server as HttpServer } from 'http';
+import { verifyAccessToken } from '../utils/tokens';
+
+let io: Server;
+
+export function initSocket(httpServer: HttpServer): void {
+  io = new Server(httpServer, {
+    cors: {
+      origin: process.env.CLIENT_URL || 'http://localhost:3000',
+      credentials: true,
+    },
+  });
+
+  io.use((socket, next) => {
+    const token = socket.handshake.auth?.token as string;
+    if (!token) return next(new Error('No token'));
+    try {
+      const payload = verifyAccessToken(token);
+      socket.data.userId = payload.id;
+      next();
+    } catch {
+      next(new Error('Invalid token'));
+    }
+  });
+
+  io.on('connection', (socket) => {
+    // Each user joins their own room — emit to io.to(userId)
+    socket.join(socket.data.userId);
+    socket.on('disconnect', () => {});
+  });
+}
+
+export function getIO(): Server {
+  if (!io) throw new Error('Socket not initialized');
+  return io;
+}
+
+// Helper used by embed service
+export function emitToUser(userId: string, event: string, data: unknown): void {
+  getIO().to(userId).emit(event, data);
+}
+```
+
+### Task 2.2 — Git service
+
+`server/src/services/gitService.ts`:
+```typescript
+import simpleGit from 'simple-git';
+import path from 'path';
+import fs from 'fs';
+
+const REPOS_DIR = process.env.REPOS_DIR || './repos';
+
+export function getRepoPath(userId: string, repoSlug: string): string {
+  return path.join(REPOS_DIR, userId, repoSlug);
+}
+
+export async function cloneRepo(userId: string, repoUrl: string, repoSlug: string): Promise<void> {
+  const repoPath = getRepoPath(userId, repoSlug);
+
+  if (fs.existsSync(repoPath)) {
+    // Repo already cloned — pull latest instead
+    const git = simpleGit(repoPath);
+    await git.pull();
+    return;
+  }
+
+  fs.mkdirSync(repoPath, { recursive: true });
+  const git = simpleGit();
+  await git.clone(repoUrl, repoPath, ['--depth', '1']); // shallow clone for speed
+}
+
+export function deleteRepo(userId: string, repoSlug: string): void {
+  const repoPath = getRepoPath(userId, repoSlug);
+  if (fs.existsSync(repoPath)) {
+    fs.rmSync(repoPath, { recursive: true, force: true });
+  }
+}
+```
+
+### Task 2.3 — File service
+
+`server/src/services/fileService.ts`:
+```typescript
+import fs from 'fs';
+import path from 'path';
+import { glob } from 'glob';
+import { getRepoPath } from './gitService';
+
+// File types to embed — mirrors the original Python version
+const SUPPORTED_EXTENSIONS = [
+  '.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.cpp', '.c', '.cs',
+  '.go', '.rb', '.php', '.swift', '.kt', '.rs', '.md', '.txt',
+  '.json', '.yaml', '.yml', '.toml', '.env.example', '.ipynb',
+];
+
+export interface ParsedFile {
+  path: string;       // relative path from repo root
+  content: string;    // text content to embed
+}
+
+export interface FileTreeNode {
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  children?: FileTreeNode[];
+}
+
+export async function getEmbeddableFiles(userId: string, repoSlug: string): Promise<ParsedFile[]> {
+  const repoPath = getRepoPath(userId, repoSlug);
+  const files: ParsedFile[] = [];
+
+  const patterns = SUPPORTED_EXTENSIONS.map(ext => `**/*${ext}`);
+  const matches = await glob(patterns, {
+    cwd: repoPath,
+    ignore: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/__pycache__/**', '**/venv/**'],
+    nodir: true,
+  });
+
+  for (const match of matches) {
+    const fullPath = path.join(repoPath, match);
+    try {
+      let content: string;
+
+      if (match.endsWith('.ipynb')) {
+        // Extract only code cells from Jupyter notebooks — raw JSON is noise
+        const raw = fs.readFileSync(fullPath, 'utf-8');
+        const notebook = JSON.parse(raw);
+        content = notebook.cells
+          .filter((cell: { cell_type: string }) => cell.cell_type === 'code')
+          .map((cell: { source: string[] }) => cell.source.join(''))
+          .join('\n\n');
+      } else {
+        content = fs.readFileSync(fullPath, 'utf-8');
+      }
+
+      // Skip empty files
+      if (content.trim().length === 0) continue;
+      // Skip very large files (> 100KB) — ChromaDB has token limits
+      if (Buffer.byteLength(content, 'utf-8') > 100 * 1024) continue;
+
+      files.push({ path: match, content });
+    } catch {
+      // Skip unreadable files silently
+    }
+  }
+
+  return files;
+}
+
+export function buildFileTree(userId: string, repoSlug: string): FileTreeNode {
+  const repoPath = getRepoPath(userId, repoSlug);
+  return buildNode(repoPath, repoPath);
+}
+
+function buildNode(fullPath: string, rootPath: string): FileTreeNode {
+  const name = path.basename(fullPath);
+  const relativePath = path.relative(rootPath, fullPath);
+  const stat = fs.statSync(fullPath);
+
+  if (!stat.isDirectory()) {
+    return { name, path: relativePath, type: 'file' };
+  }
+
+  const IGNORE_DIRS = new Set(['.git', 'node_modules', '__pycache__', 'dist', 'venv', '.next']);
+
+  const children = fs.readdirSync(fullPath)
+    .filter(child => !IGNORE_DIRS.has(child))
+    .map(child => buildNode(path.join(fullPath, child), rootPath))
+    .sort((a, b) => {
+      // Directories first, then files, both alphabetical
+      if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+  return { name, path: relativePath || '.', type: 'directory', children };
+}
+
+export function getFileContent(userId: string, repoSlug: string, filePath: string): string {
+  const repoPath = getRepoPath(userId, repoSlug);
+  // Security: prevent path traversal
+  const resolved = path.resolve(repoPath, filePath);
+  if (!resolved.startsWith(path.resolve(repoPath))) {
+    throw new Error('Path traversal attempt blocked');
+  }
+  return fs.readFileSync(resolved, 'utf-8');
+}
+```
+
+### Task 2.4 — Embed service
+
+`server/src/services/embedService.ts`:
+```typescript
+import { ChromaClient } from 'chromadb';
+import { CohereClient } from 'cohere-ai';
+import { ParsedFile } from './fileService';
+
+const CHROMA_PATH = process.env.CHROMA_PERSIST_PATH || './chroma_db';
+const BATCH_SIZE = 96; // Cohere embed API limit
+
+// Singleton clients
+let _chroma: ChromaClient | null = null;
+let _cohere: CohereClient | null = null;
+
+function getChroma(): ChromaClient {
+  if (!_chroma) _chroma = new ChromaClient({ path: CHROMA_PATH });
+  return _chroma;
+}
+
+function getCohere(): CohereClient {
+  if (!_cohere) _cohere = new CohereClient({ token: process.env.COHERE_API_KEY });
+  return _cohere;
+}
+
+export function getCollectionName(userId: string, repoSlug: string): string {
+  // ChromaDB collection names: alphanumeric + underscores only, max 63 chars
+  const safe = `u_${userId}_${repoSlug}`.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 63);
+  return safe;
+}
+
+export async function embedFiles(
+  userId: string,
+  repoSlug: string,
+  files: ParsedFile[],
+  onProgress?: (pct: number) => void,
+): Promise<{ fileCount: number; chunkCount: number }> {
+  const chroma = getChroma();
+  const cohere = getCohere();
+  const collectionName = getCollectionName(userId, repoSlug);
+
+  // Delete existing collection if re-embedding
+  try {
+    await chroma.deleteCollection({ name: collectionName });
+  } catch {
+    // Collection didn't exist — fine
+  }
+
+  const collection = await chroma.createCollection({ name: collectionName });
+
+  let embedded = 0;
+
+  for (let i = 0; i < files.length; i += BATCH_SIZE) {
+    const batch = files.slice(i, i + BATCH_SIZE);
+
+    const embedResponse = await cohere.embed({
+      texts: batch.map(f => f.content),
+      model: 'embed-english-light-v3.0',
+      inputType: 'search_document',
+    });
+
+    // Cohere v3 returns embeddings as float arrays
+    const embeddings = embedResponse.embeddings as number[][];
+
+    await collection.upsert({
+      ids: batch.map((f, idx) => `${i + idx}_${f.path}`),
+      embeddings,
+      documents: batch.map(f => f.content),
+      metadatas: batch.map(f => ({ file: f.path })),
+    });
+
+    embedded += batch.length;
+    if (onProgress) {
+      onProgress(Math.round((embedded / files.length) * 100));
+    }
+  }
+
+  return { fileCount: files.length, chunkCount: embedded };
+}
+
+export async function deleteCollection(userId: string, repoSlug: string): Promise<void> {
+  const chroma = getChroma();
+  try {
+    await chroma.deleteCollection({ name: getCollectionName(userId, repoSlug) });
+  } catch {
+    // Already gone
+  }
+}
+```
+
+### Task 2.5 — RAG service
+
+`server/src/services/ragService.ts`:
+```typescript
+import { ChromaClient } from 'chromadb';
+import { CohereClient } from 'cohere-ai';
+import { getCollectionName } from './embedService';
+import fs from 'fs';
+import path from 'path';
+import { getRepoPath } from './gitService';
+
+const CHROMA_PATH = process.env.CHROMA_PERSIST_PATH || './chroma_db';
+
+let _chroma: ChromaClient | null = null;
+let _cohere: CohereClient | null = null;
+
+function getChroma(): ChromaClient {
+  if (!_chroma) _chroma = new ChromaClient({ path: CHROMA_PATH });
+  return _chroma;
+}
+
+function getCohere(): CohereClient {
+  if (!_cohere) _cohere = new CohereClient({ token: process.env.COHERE_API_KEY });
+  return _cohere;
+}
+
+export interface RAGResult {
+  answer: string;
+  sources: Array<{ file: string; preview: string }>;
+}
+
+export async function query(
+  userId: string,
+  repoSlug: string,
+  question: string,
+): Promise<RAGResult> {
+  const chroma = getChroma();
+  const cohere = getCohere();
+  const collectionName = getCollectionName(userId, repoSlug);
+
+  // 1. Embed the question
+  const qEmbed = await cohere.embed({
+    texts: [question],
+    model: 'embed-english-light-v3.0',
+    inputType: 'search_query',
+  });
+
+  const queryEmbedding = (qEmbed.embeddings as number[][])[0];
+
+  // 2. Retrieve top-5 relevant chunks
+  let collection;
+  try {
+    collection = await chroma.getCollection({ name: collectionName });
+  } catch {
+    throw new Error('Repository not embedded yet. Please embed it first.');
+  }
+
+  const results = await collection.query({
+    queryEmbeddings: [queryEmbedding],
+    nResults: 5,
+  });
+
+  const chunks = results.documents[0] ?? [];
+  const metas = results.metadatas[0] ?? [];
+
+  // 3. Fallback: if no chunks retrieved, use README
+  let context = chunks.join('\n\n---\n\n');
+  if (!context.trim()) {
+    const repoPath = getRepoPath(userId, repoSlug);
+    const readmePath = path.join(repoPath, 'README.md');
+    if (fs.existsSync(readmePath)) {
+      context = fs.readFileSync(readmePath, 'utf-8').slice(0, 4000);
+    } else {
+      context = 'No relevant code found.';
+    }
+  }
+
+  // 4. Build RAG prompt
+  const prompt = `You are an expert code assistant. A developer is asking about a GitHub repository.
+
+Use ONLY the following code excerpts to answer the question. Be specific and reference file names.
+If the answer is not in the provided code, say so clearly — do not guess.
+
+CODE CONTEXT:
+${context}
+
+QUESTION: ${question}
+
+ANSWER:`;
+
+  // 5. Generate answer with Cohere
+  const chatResponse = await cohere.chat({
+    model: 'command-r',
+    message: prompt,
+    maxTokens: 800,
+  });
+
+  const answer = chatResponse.text;
+
+  // 6. Build source citations
+  const sources = metas
+    .filter((m): m is { file: string } => Boolean(m?.file))
+    .map(m => ({
+      file: m.file,
+      preview: chunks[metas.indexOf(m)]?.slice(0, 150) ?? '',
+    }));
+
+  return { answer, sources };
+}
+```
+
+### Task 2.6 — Auth middleware
+
+`server/src/middleware/authenticate.ts`:
+```typescript
+import { Request, Response, NextFunction } from 'express';
+import { verifyAccessToken } from '../utils/tokens';
+import { User } from '../models/User';
+
+export async function authenticate(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const token = req.cookies?.access_token;
+    if (!token) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+    const payload = verifyAccessToken(token);
+    const user = await User.findById(payload.id).select('-passwordHash');
+    if (!user) {
+      res.status(401).json({ error: 'User not found' });
+      return;
+    }
+    req.user = user;
+    next();
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
+```
+
+### Task 2.7 — Auth routes
+
+`server/src/routes/auth.ts`:
+```typescript
+import { Router, Request, Response } from 'express';
+import bcrypt from 'bcryptjs';
+import { User } from '../models/User';
+import { setTokenCookies, clearTokenCookies, verifyRefreshToken, signAccessToken } from '../utils/tokens';
+import { authenticate } from '../middleware/authenticate';
+
+export const authRouter = Router();
+
+// POST /api/auth/register
+authRouter.post('/register', async (req: Request, res: Response) => {
+  try {
+    const { email, password, displayName } = req.body;
+    if (!email || !password || !displayName) {
+      res.status(400).json({ error: 'email, password, and displayName are required' });
+      return;
+    }
+    if (password.length < 8) {
+      res.status(400).json({ error: 'Password must be at least 8 characters' });
+      return;
+    }
+    const exists = await User.findOne({ email });
+    if (exists) {
+      res.status(409).json({ error: 'Email already registered' });
+      return;
+    }
+    const passwordHash = await bcrypt.hash(password, 12);
+    const user = await User.create({ email, passwordHash, displayName });
+    setTokenCookies(res, user._id.toString());
+    res.status(201).json({
+      user: { id: user._id, email: user.email, displayName: user.displayName }
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// POST /api/auth/login
+authRouter.post('/login', async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      res.status(400).json({ error: 'email and password required' });
+      return;
+    }
+    const user = await User.findOne({ email });
+    if (!user) {
+      res.status(401).json({ error: 'Invalid credentials' });
+      return;
+    }
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) {
+      res.status(401).json({ error: 'Invalid credentials' });
+      return;
+    }
+    setTokenCookies(res, user._id.toString());
+    res.json({
+      user: { id: user._id, email: user.email, displayName: user.displayName }
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// POST /api/auth/refresh
+authRouter.post('/refresh', (req: Request, res: Response) => {
+  try {
+    const token = req.cookies?.refresh_token;
+    if (!token) {
+      res.status(401).json({ error: 'No refresh token' });
+      return;
+    }
+    const payload = verifyRefreshToken(token);
+    const newAccess = signAccessToken(payload.id);
+    const isProd = process.env.NODE_ENV === 'production';
+    res.cookie('access_token', newAccess, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+      maxAge: 15 * 60 * 1000,
+    });
+    res.json({ ok: true });
+  } catch {
+    res.status(401).json({ error: 'Invalid refresh token' });
+  }
+});
+
+// POST /api/auth/logout
+authRouter.post('/logout', (_req: Request, res: Response) => {
+  clearTokenCookies(res);
+  res.json({ ok: true });
+});
+
+// GET /api/auth/me
+authRouter.get('/me', authenticate, (req: Request, res: Response) => {
+  const u = req.user;
+  res.json({ id: u._id, email: u.email, displayName: u.displayName, avatar: u.avatar });
+});
+```
+
+### Task 2.8 — Repos routes
+
+`server/src/routes/repos.ts`:
+```typescript
+import { Router, Request, Response } from 'express';
+import { authenticate } from '../middleware/authenticate';
+import { Repository } from '../models/Repository';
+import { cloneRepo, deleteRepo } from '../services/gitService';
+import { getEmbeddableFiles, buildFileTree, getFileContent } from '../services/fileService';
+import { embedFiles, deleteCollection } from '../services/embedService';
+import { emitToUser } from '../services/socketManager';
+import { enqueue } from '../utils/jobQueue';
+
+export const reposRouter = Router();
+reposRouter.use(authenticate);
+
+// GET /api/repos — list user's repos
+reposRouter.get('/', async (req: Request, res: Response) => {
+  const repos = await Repository.find({ userId: req.user._id }).sort({ createdAt: -1 });
+  res.json(repos);
+});
+
+// POST /api/repos — clone + embed a new repo
+reposRouter.post('/', async (req: Request, res: Response) => {
+  try {
+    const { repoUrl } = req.body;
+    if (!repoUrl) {
+      res.status(400).json({ error: 'repoUrl is required' });
+      return;
+    }
+
+    // Extract repo name from URL
+    const urlParts = repoUrl.replace(/\.git$/, '').split('/');
+    const repoName = urlParts[urlParts.length - 1];
+    const repoSlug = repoName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+
+    if (!repoSlug) {
+      res.status(400).json({ error: 'Could not parse repo name from URL' });
+      return;
+    }
+
+    // Check if already exists for this user
+    const existing = await Repository.findOne({ userId: req.user._id, repoSlug });
+    if (existing) {
+      res.status(409).json({ error: 'You already have this repo. Use re-embed to refresh it.' });
+      return;
+    }
+
+    const repo = await Repository.create({
+      userId: req.user._id,
+      repoUrl,
+      repoName,
+      repoSlug,
+      embeddingStatus: 'pending',
+    });
+
+    // Start background job
+    const userId = req.user._id.toString();
+    enqueue(`embed_${repo._id}`, async () => {
+      try {
+        // Stage 1: Clone
+        await Repository.findByIdAndUpdate(repo._id, { embeddingStatus: 'processing', embeddingProgress: 10 });
+        emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 10, stage: 'cloning' });
+
+        await cloneRepo(userId, repoUrl, repoSlug);
+        emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 35, stage: 'cloned' });
+
+        // Stage 2: Parse files
+        await Repository.findByIdAndUpdate(repo._id, { embeddingProgress: 40 });
+        emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 40, stage: 'parsing' });
+        const files = await getEmbeddableFiles(userId, repoSlug);
+
+        if (files.length === 0) {
+          throw new Error('No embeddable files found in this repository');
+        }
+
+        // Stage 3: Embed with progress updates
+        emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 45, stage: 'embedding' });
+        const { fileCount, chunkCount } = await embedFiles(userId, repoSlug, files, (pct) => {
+          // Map embed progress (0-100) to overall progress (45-95)
+          const overall = 45 + Math.round(pct * 0.5);
+          emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: overall, stage: 'embedding' });
+        });
+
+        await Repository.findByIdAndUpdate(repo._id, {
+          embeddingStatus: 'done',
+          embeddingProgress: 100,
+          fileCount,
+          chunkCount,
+          lastEmbeddedAt: new Date(),
+        });
+
+        emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 100, stage: 'done' });
+      } catch (err) {
+        await Repository.findByIdAndUpdate(repo._id, {
+          embeddingStatus: 'failed',
+          errorMessage: String(err),
+        });
+        emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 0, stage: 'failed', error: String(err) });
+      }
+    });
+
+    res.status(201).json(repo);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// GET /api/repos/:id — get single repo
+reposRouter.get('/:id', async (req: Request, res: Response) => {
+  const repo = await Repository.findOne({ _id: req.params.id, userId: req.user._id });
+  if (!repo) { res.status(404).json({ error: 'Repo not found' }); return; }
+  res.json(repo);
+});
+
+// DELETE /api/repos/:id — delete repo + collection
+reposRouter.delete('/:id', async (req: Request, res: Response) => {
+  const repo = await Repository.findOne({ _id: req.params.id, userId: req.user._id });
+  if (!repo) { res.status(404).json({ error: 'Repo not found' }); return; }
+
+  await Repository.findByIdAndDelete(repo._id);
+  const userId = req.user._id.toString();
+  deleteRepo(userId, repo.repoSlug);
+  await deleteCollection(userId, repo.repoSlug);
+
+  res.json({ ok: true });
+});
+
+// POST /api/repos/:id/re-embed — re-embed existing repo
+reposRouter.post('/:id/re-embed', async (req: Request, res: Response) => {
+  const repo = await Repository.findOne({ _id: req.params.id, userId: req.user._id });
+  if (!repo) { res.status(404).json({ error: 'Repo not found' }); return; }
+
+  await Repository.findByIdAndUpdate(repo._id, {
+    embeddingStatus: 'pending',
+    embeddingProgress: 0,
+    errorMessage: undefined,
+  });
+
+  const userId = req.user._id.toString();
+  enqueue(`embed_${repo._id}_${Date.now()}`, async () => {
+    try {
+      await Repository.findByIdAndUpdate(repo._id, { embeddingStatus: 'processing', embeddingProgress: 10 });
+      emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 10, stage: 'cloning' });
+      await cloneRepo(userId, repo.repoUrl, repo.repoSlug);
+
+      const files = await getEmbeddableFiles(userId, repo.repoSlug);
+      emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 40, stage: 'embedding' });
+      const { fileCount, chunkCount } = await embedFiles(userId, repo.repoSlug, files, (pct) => {
+        emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 40 + Math.round(pct * 0.55), stage: 'embedding' });
+      });
+
+      await Repository.findByIdAndUpdate(repo._id, {
+        embeddingStatus: 'done', embeddingProgress: 100, fileCount, chunkCount, lastEmbeddedAt: new Date(),
+      });
+      emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 100, stage: 'done' });
+    } catch (err) {
+      await Repository.findByIdAndUpdate(repo._id, { embeddingStatus: 'failed', errorMessage: String(err) });
+      emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 0, stage: 'failed', error: String(err) });
+    }
+  });
+
+  res.json({ ok: true, message: 'Re-embedding started' });
+});
+
+// GET /api/repos/:id/files — file tree
+reposRouter.get('/:id/files', async (req: Request, res: Response) => {
+  try {
+    const repo = await Repository.findOne({ _id: req.params.id, userId: req.user._id });
+    if (!repo) { res.status(404).json({ error: 'Repo not found' }); return; }
+    const tree = buildFileTree(req.user._id.toString(), repo.repoSlug);
+    res.json(tree);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// GET /api/repos/:id/file — single file content (?path=src/index.ts)
+reposRouter.get('/:id/file', async (req: Request, res: Response) => {
+  try {
+    const repo = await Repository.findOne({ _id: req.params.id, userId: req.user._id });
+    if (!repo) { res.status(404).json({ error: 'Repo not found' }); return; }
+    const filePath = req.query.path as string;
+    if (!filePath) { res.status(400).json({ error: 'path query param required' }); return; }
+    const content = getFileContent(req.user._id.toString(), repo.repoSlug, filePath);
+    res.json({ content });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+```
+
+### Task 2.9 — Chat routes
+
+`server/src/routes/chat.ts`:
+```typescript
+import { Router, Request, Response } from 'express';
+import { authenticate } from '../middleware/authenticate';
+import { Repository } from '../models/Repository';
+import { ChatSession } from '../models/ChatSession';
+import { query } from '../services/ragService';
+
+export const chatRouter = Router();
+chatRouter.use(authenticate);
+
+// POST /api/chat/:repoId — send a message, get RAG answer
+chatRouter.post('/:repoId', async (req: Request, res: Response) => {
+  try {
+    const { question } = req.body;
+    if (!question?.trim()) {
+      res.status(400).json({ error: 'question is required' });
+      return;
+    }
+
+    const repo = await Repository.findOne({ _id: req.params.repoId, userId: req.user._id });
+    if (!repo) { res.status(404).json({ error: 'Repo not found' }); return; }
+    if (repo.embeddingStatus !== 'done') {
+      res.status(400).json({ error: 'Repo is not fully embedded yet' });
+      return;
+    }
+
+    const { answer, sources } = await query(req.user._id.toString(), repo.repoSlug, question);
+
+    // Upsert chat session — one active session per repo (can extend to multiple later)
+    const userMessage = { role: 'user' as const, content: question, sources: [], createdAt: new Date() };
+    const assistantMessage = { role: 'assistant' as const, content: answer, sources, createdAt: new Date() };
+
+    const session = await ChatSession.findOneAndUpdate(
+      { userId: req.user._id, repoId: repo._id },
+      {
+        $push: { messages: { $each: [userMessage, assistantMessage] } },
+        $setOnInsert: { title: question.slice(0, 60) },
+      },
+      { upsert: true, new: true },
+    );
+
+    res.json({ answer, sources, sessionId: session._id });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// GET /api/chat/:repoId/history — get chat history for a repo
+chatRouter.get('/:repoId/history', async (req: Request, res: Response) => {
+  const session = await ChatSession.findOne({
+    userId: req.user._id,
+    repoId: req.params.repoId,
+  });
+  res.json(session ?? { messages: [] });
+});
+
+// DELETE /api/chat/:repoId/history — clear chat history
+chatRouter.delete('/:repoId/history', async (req: Request, res: Response) => {
+  await ChatSession.findOneAndDelete({ userId: req.user._id, repoId: req.params.repoId });
+  res.json({ ok: true });
+});
+```
+
+### Task 2.10 — User routes
+
+`server/src/routes/user.ts`:
+```typescript
+import { Router, Request, Response } from 'express';
+import { authenticate } from '../middleware/authenticate';
+import { User } from '../models/User';
+
+export const userRouter = Router();
+userRouter.use(authenticate);
+
+// GET /api/user/profile
+userRouter.get('/profile', (req: Request, res: Response) => {
+  const u = req.user;
+  res.json({ id: u._id, email: u.email, displayName: u.displayName, avatar: u.avatar });
+});
+
+// PATCH /api/user/profile
+userRouter.patch('/profile', async (req: Request, res: Response) => {
+  const { displayName } = req.body;
+  if (!displayName?.trim()) {
+    res.status(400).json({ error: 'displayName required' });
+    return;
+  }
+  const updated = await User.findByIdAndUpdate(
+    req.user._id,
+    { displayName: displayName.trim() },
+    { new: true, select: '-passwordHash' }
+  );
+  res.json(updated);
+});
+```
+
+### Task 2.11 — Delete old Python files
+
+Once all services above are working end-to-end locally, delete:
+- `main.py` (root or wherever FastAPI entry was)
+- `requirements.txt`
+- Any Python venv or `__pycache__` directories
+
+Add to `.gitignore`:
+```
+# Python artifacts (FastAPI removed)
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Node
+node_modules/
+dist/
+
+# Env
+.env
+*.env.local
+
+# Repos and ChromaDB (runtime data)
+server/repos/
+server/chroma_db/
+```
+
+**Day 2 Checkpoint**:
+```bash
+# Terminal 1
+cd server && npm run dev
+
+# Terminal 2 — test the full flow
+# 1. Register
+curl -c cookies.txt -X POST http://localhost:5000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@test.com","password":"password123","displayName":"Test User"}'
+
+# 2. Clone + embed a small public repo
+curl -b cookies.txt -X POST http://localhost:5000/api/repos \
+  -H "Content-Type: application/json" \
+  -d '{"repoUrl":"https://github.com/expressjs/express"}'
+# Should return repo doc with status "pending"
+
+# 3. Watch MongoDB — Repository.embeddingStatus should go pending → processing → done
+
+# 4. Ask a question (after status is "done")
+curl -b cookies.txt -X POST http://localhost:5000/api/chat/<repoId> \
+  -H "Content-Type: application/json" \
+  -d '{"question":"Where is routing handled?"}'
+# Must return { answer, sources }
+```
+
+---
+
+## DAY 3 — React Frontend: Auth + Dashboard + Repo Management
+
+**Goal**: Full React app in TypeScript + Tailwind + shadcn/ui. Auth flow works. Dashboard
+shows repos. Can add a repo and see real-time embed progress.
+
+### Task 3.1 — Initialize client
+
+```bash
+cd client
+npm create vite@latest . -- --template react-ts
+npm install axios react-router-dom zustand @tanstack/react-query socket.io-client
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+```
+
+Install shadcn/ui (follow https://ui.shadcn.com/docs/installation/vite for exact steps).
+Then add these components:
+```bash
+npx shadcn-ui@latest add button input card badge progress dialog
+npx shadcn-ui@latest add dropdown-menu avatar separator toast scroll-area
+```
+
+### Task 3.2 — Tailwind config
+
+`tailwind.config.ts` — enable dark mode, set content paths to include `./src/**/*.{ts,tsx}`.
+Add a dark, professional color palette. Primary color: slate-900 background, zinc-800 cards,
+indigo-500 accent. This should look like a developer tool, not a SaaS marketing site.
+
+### Task 3.3 — Folder structure
+
+```
+client/src/
+├── api/
+│   ├── client.ts          ← Axios instance
+│   ├── auth.ts            ← auth API calls
+│   ├── repos.ts           ← repos API calls
+│   └── chat.ts            ← chat API calls
+├── components/
+│   ├── ui/                ← shadcn (auto-generated, don't edit)
+│   ├── layout/
+│   │   ├── AppLayout.tsx  ← sidebar + main area shell
+│   │   └── Sidebar.tsx    ← repo list in sidebar
+│   ├── repos/
+│   │   ├── RepoCard.tsx
+│   │   ├── AddRepoModal.tsx
+│   │   └── EmbedProgress.tsx
+│   └── chat/
+│       ├── ChatInterface.tsx
+│       ├── MessageBubble.tsx
+│       └── SourceCitation.tsx
+├── hooks/
+│   ├── useAuth.ts
+│   └── useSocket.ts
+├── pages/
+│   ├── Landing.tsx
+│   ├── Login.tsx
+│   ├── Register.tsx
+│   ├── Dashboard.tsx
+│   └── Settings.tsx
+├── store/
+│   └── authStore.ts
+├── router/
+│   └── index.tsx
+└── main.tsx
+```
+
+### Task 3.4 — Axios client with auto-refresh
+
+`client/src/api/client.ts`:
+```typescript
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL + '/api',
+  withCredentials: true,
+  timeout: 120_000, // 2 min — embed calls can be slow on Render cold start
+});
+
+let refreshing = false;
+let queue: Array<() => void> = [];
+
+api.interceptors.response.use(
+  res => res,
+  async error => {
+    if (error.response?.status !== 401 || error.config._retry) {
+      return Promise.reject(error);
+    }
+    if (refreshing) {
+      return new Promise(resolve => {
+        queue.push(() => resolve(api(error.config)));
+      });
+    }
+    refreshing = true;
+    error.config._retry = true;
+    try {
+      await axios.post(
+        import.meta.env.VITE_API_URL + '/api/auth/refresh',
+        {},
+        { withCredentials: true }
+      );
+      queue.forEach(fn => fn());
+      queue = [];
+      return api(error.config);
+    } catch {
+      queue = [];
+      window.location.href = '/login';
+    } finally {
+      refreshing = false;
+    }
+  }
+);
+
+export default api;
+```
+
+### Task 3.5 — Auth store (Zustand)
+
+`client/src/store/authStore.ts`:
+```typescript
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+
+interface AuthUser {
+  id: string;
+  email: string;
+  displayName: string;
+  avatar?: string;
+}
+
+interface AuthState {
+  user: AuthUser | null;
+  isAuthenticated: boolean;
+  setUser: (user: AuthUser) => void;
+  clearUser: () => void;
+}
+
+export const useAuthStore = create<AuthState>()(
+  persist(
+    set => ({
+      user: null,
+      isAuthenticated: false,
+      setUser: user => set({ user, isAuthenticated: true }),
+      clearUser: () => set({ user: null, isAuthenticated: false }),
+    }),
+    { name: 'codexai-auth' }
+  )
+);
+```
+
+### Task 3.6 — Socket.IO hook
+
+`client/src/hooks/useSocket.ts`:
+```typescript
+import { useEffect, useRef } from 'react';
+import { io, Socket } from 'socket.io-client';
+
+// Call once at app root level, pass socket down or use context
+export function useSocket(token: string | null): Socket | null {
+  const ref = useRef<Socket | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    ref.current = io(import.meta.env.VITE_SOCKET_URL, {
+      auth: { token },
+      withCredentials: true,
+    });
+    return () => { ref.current?.disconnect(); ref.current = null; };
+  }, [token]);
+
+  return ref.current;
+}
+```
+
+### Task 3.7 — Router
+
+`client/src/router/index.tsx`:
+```typescript
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useAuthStore } from '../store/authStore';
+import Landing from '../pages/Landing';
+import Login from '../pages/Login';
+import Register from '../pages/Register';
+import Dashboard from '../pages/Dashboard';
+import Settings from '../pages/Settings';
+
+function Protected({ children }: { children: React.ReactNode }) {
+  const isAuthenticated = useAuthStore(s => s.isAuthenticated);
+  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+}
+
+export function AppRouter() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
+        <Route path="/settings" element={<Protected><Settings /></Protected>} />
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+```
+
+### Task 3.8 — Pages spec
+
+**`Landing.tsx`**:
+- Dark background (slate-950)
+- Hero: "Chat with any GitHub codebase" — large heading, subtitle "RAG-powered code Q&A. Clone, embed, ask."
+- Two CTA buttons: "Get Started Free" (→ /register) and "Sign In" (→ /login)
+- Three feature cards below hero: "RAG-Powered" / "Real-Time Progress" / "Full Chat History"
+- Clean, minimal — no animations needed, just good spacing and typography
+
+**`Login.tsx`** and **`Register.tsx`**:
+- Centered card on dark background
+- Logo/name at top
+- Email + password (+ displayName on register)
+- Submit button with loading state
+- Error message display (from API)
+- Link to the other page at bottom
+
+**`Dashboard.tsx`**:
+- Uses `AppLayout` which renders the sidebar
+- Sidebar lists all repos as `RepoCard` components — clicking one sets active repo
+- "Add Repo" button at top of sidebar opens `AddRepoModal`
+- Main area: if no repo selected, show welcome state. If repo selected, show two-panel layout: file tree (left 1/3) + `ChatInterface` (right 2/3)
+- React Query: `useQuery(['repos'], fetchRepos)` — auto-refetch every 5 seconds while any repo has status `processing` (to pick up status changes)
+
+**`Settings.tsx`**:
+- Single card: display name edit field + save button
+- Email shown (read-only)
+- "Sign Out" button → calls `/api/auth/logout`, clears auth store, redirects to `/`
+
+### Task 3.9 — Key components spec
+
+**`RepoCard.tsx`**:
+- Shows: repo name, status badge (`pending`/`processing`/`done`/`failed`), file count, chunk count
+- If status is `processing`: show `<Progress value={embeddingProgress} />`
+- If status is `done`: click to open in dashboard main area
+- If status is `failed`: show error message + "Retry" button
+- Three-dot menu: "Re-embed" and "Delete"
+
+**`AddRepoModal.tsx`**:
+- Dialog with a single input: "GitHub Repository URL"
+- Placeholder: `https://github.com/username/repository`
+- Validation: must start with `https://github.com/`
+- On submit: calls `POST /api/repos`, closes modal, sidebar refetches
+
+**`EmbedProgress.tsx`**:
+- Listens on Socket.IO `embed-progress` events
+- Shows animated progress bar with stage label ("Cloning...", "Parsing files...", "Embedding...", "Done!")
+- On `done`: trigger React Query refetch of repos list
+
+**`ChatInterface.tsx`**:
+- On mount: fetch `GET /api/chat/:repoId/history` and populate message list
+- Scrollable message area — auto-scroll to bottom on new message
+- Input: `<textarea>` that expands with content, sends on Enter (Shift+Enter for newline)
+- Loading state: animated "thinking" dots while waiting for API response
+- "Clear history" button in top-right
+
+**`MessageBubble.tsx`**:
+- User messages: right-aligned, indigo background
+- Assistant messages: left-aligned, zinc-800 background, markdown-ish formatting (at minimum: preserve newlines, bold `**text**`)
+- Below each assistant message: collapsed `SourceCitation` component
+
+**`SourceCitation.tsx`**:
+- Collapsible — "3 sources" button that expands to show file paths
+- Each source: filename + first 150 chars of chunk as preview
+- Monospace font for file paths
+
+**Day 3 Checkpoint**:
+```
+1. npm run dev in client
+2. Open http://localhost:3000
+3. Register → redirected to /dashboard
+4. Add a GitHub repo URL → modal closes → sidebar shows repo with "pending" badge
+5. Watch badge change to "processing" → progress bar animates → "done"
+6. Click repo → two-panel layout appears
+7. Type a question → see loading dots → see answer with source citations below
+```
+
+---
+
+## DAY 4 — File Tree UI + Chat Polish + Error Handling
+
+**Goal**: File tree fully interactive. Chat UX polished. All error states handled.
+App feels production-ready, not like a demo.
+
+### Task 4.1 — File tree component
+
+`FileTree.tsx` (inside `components/repos/`):
+- Recursive component — renders `FileTreeNode` objects from `/api/repos/:id/files`
+- Directories: collapsible with chevron icon, folder icon
+- Files: file icon (use file extension to pick icon if possible, otherwise generic)
+- Clicking a file: opens a `Dialog` (modal) showing the raw file content in a `<pre>` block with horizontal scroll
+- Style: compact, monospace font, indent children by 16px per level
+- Directories collapsed by default, except the root
+
+### Task 4.2 — Code display in file modal
+
+When a file is clicked:
+- Call `GET /api/repos/:id/file?path=<filePath>`
+- Show content in a modal with:
+  - Filename in modal header
+  - Scrollable `<pre>` block, max height 70vh
+  - "Copy" button that copies content to clipboard
+  - Dark background, monospace font, line-height 1.5
+
+Do NOT install a syntax highlighting library (adds bundle weight, not worth it for portfolio).
+Plain `<pre>` with good styling is fine.
+
+### Task 4.3 — Chat quality improvements
+
+- **Question suggestions**: when a repo is first loaded and chat is empty, show 3 suggested questions as clickable chips:
+  - "How does authentication work in this codebase?"
+  - "What is the entry point of this application?"
+  - "Explain the folder structure"
+  - Clicking a chip fills the textarea (user still has to send)
+
+- **Markdown in answers**: implement a minimal markdown renderer (no library needed):
+  - Lines starting with `#`, `##`, `###` → styled headings
+  - Text wrapped in ` ``` ` → `<pre>` code block
+  - `**text**` → `<strong>`
+  - `\n\n` → paragraph break
+  - Implement as a pure function `renderMarkdown(text: string): string` returning safe HTML,
+    used with `dangerouslySetInnerHTML` (input is from our own API so XSS risk is controlled)
+
+- **Error states in chat**: if the API call fails, show an error bubble in the message list (not a toast), with a "Retry" button that re-sends the last question.
+
+### Task 4.4 — Loading and empty states
+
+Every data-dependent component needs three states:
+
+| Component | Loading | Empty | Error |
+|---|---|---|---|
+| Sidebar repo list | Skeleton cards (3) | "No repos yet. Add one →" | "Failed to load repos" + retry |
+| File tree | Spinner | "No files found" | "Failed to load file tree" + retry |
+| Chat history | Skeleton messages | Suggested questions chips | Error banner |
+| File content modal | Spinner | — | "Failed to load file" |
+
+Use shadcn's `Skeleton` component for loading states.
+
+### Task 4.5 — Toast notifications
+
+Use shadcn's `Toaster` + `useToast`. Show toasts for:
+- Repo added successfully: "Repository added. Embedding started."
+- Repo deleted: "Repository deleted."
+- Re-embed triggered: "Re-embedding started."
+- Profile saved: "Profile updated."
+- Any unexpected API error: "Something went wrong. Please try again."
+
+### Task 4.6 — Mobile responsiveness (minimum viable)
+
+The app is a developer tool — desktop first is fine. But it must not break on mobile:
+- Sidebar: on screens < 768px, hide sidebar by default, show a hamburger button in header to toggle it
+- Chat input: full width on mobile
+- File tree modal: full screen on mobile
+
+Use Tailwind's `md:` breakpoint prefix throughout.
+
+### Task 4.7 — "Service waking up" banner
+
+Render free tier services sleep after 15 minutes inactivity. First request can take 30s.
+
+In `client/src/api/client.ts`, add a request interceptor:
+```typescript
+let slowRequestTimer: ReturnType<typeof setTimeout> | null = null;
+
+api.interceptors.request.use(config => {
+  slowRequestTimer = setTimeout(() => {
+    // Dispatch a custom event — components can listen and show banner
+    window.dispatchEvent(new CustomEvent('api-slow'));
+  }, 5000);
+  return config;
+});
+
+api.interceptors.response.use(
+  res => { if (slowRequestTimer) clearTimeout(slowRequestTimer); return res; },
+  err => { if (slowRequestTimer) clearTimeout(slowRequestTimer); return Promise.reject(err); }
+);
+```
+
+In `AppLayout.tsx`, listen for `api-slow` event and show a dismissible banner:
+`"Service is waking up from sleep — this may take up to 30 seconds on first load."`
+
+**Day 4 Checkpoint**:
+```
+1. Click any file in the file tree → modal opens with content
+2. Ask a question → answer renders with formatted code blocks and bold text
+3. Click a suggested question chip → textarea fills
+4. Delete a repo → toast confirms, sidebar updates
+5. Resize browser to 375px width → app is usable (sidebar collapses)
+6. Stop server, wait 5 seconds, reload → "waking up" banner appears
+```
+
+---
+
+## DAY 5 — Deployment + Environment Config + README
+
+**Goal**: Both services deployed and publicly accessible. README complete. App fully working
+in production. Clean git history.
+
+### Task 5.1 — Express: production-ready hardening
+
+Add to `server/src/app.ts` before routes:
+```typescript
+// Trust Render's proxy for correct IP in rate limiting
+app.set('trust proxy', 1);
+```
+
+Add to `server/src/server.ts` — graceful shutdown:
+```typescript
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received — shutting down');
+  await mongoose.connection.close();
+  process.exit(0);
+});
+```
+
+### Task 5.2 — Render config for Express
+
+`server/render.yaml`:
+```yaml
+services:
+  - type: web
+    name: codexai-server
+    env: node
+    region: oregon
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    disk:
+      name: codexai-data
+      mountPath: /app/data
+      sizeGB: 1
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: CHROMA_PERSIST_PATH
+        value: /app/data/chroma_db
+      - key: REPOS_DIR
+        value: /app/data/repos
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: COHERE_API_KEY
+        sync: false
+      - key: CLIENT_URL
+        sync: false
+```
+
+Note: `CLIENT_URL` must be set to your Vercel URL (e.g. `https://codexai.vercel.app`) after
+Vercel deployment. CORS will reject requests from other origins without it.
+
+`server/package.json` — ensure start script uses compiled output:
+```json
+"scripts": {
+  "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+  "build": "tsc",
+  "start": "node dist/server.js"
+}
+```
+
+### Task 5.3 — Vercel config for React
+
+`client/vercel.json`:
+```json
+{
+  "rewrites": [{ "source": "/(.*)", "destination": "/" }]
+}
+```
+
+`client/.env.production` — do NOT commit this file. Set these as Vercel environment variables
+in the dashboard:
+```
+VITE_API_URL=https://<your-render-service>.onrender.com
+VITE_SOCKET_URL=https://<your-render-service>.onrender.com
+```
+
+In Vercel dashboard: set "Root Directory" to `client`. Set "Build Command" to `npm run build`.
+Set "Output Directory" to `dist`.
+
+### Task 5.4 — MongoDB Atlas setup instructions
+
+Document in README exactly:
+1. Create free M0 cluster at cloud.mongodb.com
+2. Database Access: create user with readWrite on `codexai` database
+3. Network Access: add `0.0.0.0/0` (required — Render IPs are dynamic)
+4. Connect: copy the connection string, replace `<password>`, set as `MONGODB_URI` on Render
+
+### Task 5.5 — Deployment sequence
+
+Deploy in exactly this order:
+1. Push all code to GitHub (ensure no `.env` files committed)
+2. Deploy Express to Render — get the service URL (e.g. `https://codexai-server.onrender.com`)
+3. Deploy client to Vercel — set `VITE_API_URL` and `VITE_SOCKET_URL` to the Render URL
+4. After Vercel deploy, get the Vercel URL — go back to Render and set `CLIENT_URL` to it
+5. Trigger a Render redeploy (so CORS picks up the new CLIENT_URL)
+6. Test full flow in production
+
+### Task 5.6 — README.md (full rewrite)
+
+Write `README.md` at repo root. Must include:
+
+**Sections**:
+1. Project name + one-line description
+2. Live demo link (Vercel URL)
+3. Architecture diagram (ASCII, matching the one in this prompt)
+4. Tech stack table (MongoDB / Express / React / Node.js / Cohere / ChromaDB / Socket.IO)
+5. Features list (bullet points):
+   - JWT authentication (register/login)
+   - Clone any public GitHub repo
+   - RAG-powered Q&A with source citations
+   - Real-time embedding progress via Socket.IO
+   - Persistent chat history per repo
+   - File tree explorer with content viewer
+6. Local development setup (step-by-step):
+   - Prerequisites: Node 18+, Git
+   - Clone repo, cd into server, cp .env.example .env, fill values, npm install, npm run dev
+   - cd into client, cp .env.example .env, npm install, npm run dev
+7. Environment variables table with descriptions
+8. Deployment guide (Render + Vercel + MongoDB Atlas, reference to render.yaml)
+9. Free tier limits section:
+   - Cohere: 1000 API calls/month on free tier
+   - Render: service sleeps after 15 min inactivity (cold start ~30s)
+   - MongoDB Atlas M0: 512MB storage
+   - ChromaDB: stored on Render persistent disk (1GB)
+
+### Task 5.7 — Final git cleanup
+
+```bash
+# Verify no secrets committed
+git log --all --full-history -- "**/.env"  # should return nothing
+
+# Verify .gitignore covers all runtime dirs
+cat .gitignore  # must include: .env, server/repos/, server/chroma_db/, node_modules/, dist/
+
+# Final commits
+git add .
+git commit -m "Day 5 complete: deployed to Vercel + Render, README updated"
+
+# Tag the release
+git tag v1.0.0
+git push origin main --tags
+```
+
+---
+
+## DONE STATE — DEFINITION OF COMPLETE
+
+At the end of Day 5, verify every item:
+
+**Authentication**
+- [ ] User can register with email + password
+- [ ] User can log in with existing account
+- [ ] Access token refreshes automatically (test by waiting 15 min or manually expiring)
+- [ ] Logout clears cookies and redirects to landing
+
+**Core AI Flow**
+- [ ] Add a GitHub repo URL → repo appears in sidebar with "pending" status
+- [ ] Socket.IO progress bar animates through stages (cloning → parsing → embedding → done)
+- [ ] File tree loads after embedding is done
+- [ ] Clicking a file shows its content in a modal
+- [ ] Asking a question returns an answer with source file citations
+- [ ] Chat history persists — refreshing the page shows previous conversation
+
+**UI / UX**
+- [ ] Landing page looks professional and has working CTAs
+- [ ] All loading states show skeletons or spinners (no blank screens)
+- [ ] All error states show actionable messages (not just "Error")
+- [ ] Toasts appear for all user actions
+- [ ] App is usable on mobile (sidebar collapses, chat works)
+- [ ] "Service waking up" banner appears on slow first load
+
+**Deployment**
+- [ ] Both services (Express on Render, React on Vercel) are publicly accessible
+- [ ] Full flow works in production (not just localhost)
+- [ ] No `.env` files or secrets in the GitHub repository
+- [ ] `/api/health` returns `{ "status": "ok" }` on the live Render URL
+- [ ] README has live demo link, setup instructions, and architecture diagram
+
+---
+
+## HARD RULES FOR THE AGENT
+
+1. Complete Day N entirely before starting Day N+1. Each day has a checkpoint — pass it before moving on.
+2. Never commit `.env` files. If you detect any secret in a staged file, remove it immediately.
+3. No paid services. If a library or API requires payment, use the free-tier alternative or remove the feature.
+4. TypeScript strict mode throughout. No `any` without an inline comment explaining why.
+5. FastAPI is gone. There is no Python in this project after Day 2. Do not reintroduce it.
+6. ChromaDB and Cohere are accessed directly from Express services. There is no separate AI microservice.
+7. When something is unclear, pick the simpler implementation. This is a portfolio project. Working > clever.
+8. After each day's checkpoint passes: `git add . && git commit -m "Day N complete: <one line summary>"`.
+9. Socket.IO room model: each user joins exactly one room (their userId string). All server-side emits use `io.to(userId).emit(...)`. Never broadcast globally.
+10. Render cold start timeout: all Axios calls in the client have `timeout: 120_000` (2 minutes). This is already set in `client/src/api/client.ts` — do not lower it.
+
+---
+
+*CodexAI MERN+AI Master Prompt — Stripped Edition*
+*Stack: MongoDB + Express + React + Node.js + Cohere + ChromaDB + Socket.IO*
+*Deploy: Vercel (free) + Render (free) + MongoDB Atlas M0 (free)*
+*No FastAPI. No Redis. No paid APIs. No bloat.*

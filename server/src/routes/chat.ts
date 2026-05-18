@@ -1,0 +1,60 @@
+import { Router, Request, Response } from 'express';
+import { authenticate } from '../middleware/authenticate';
+import { Repository } from '../models/Repository';
+import { ChatSession } from '../models/ChatSession';
+import { query } from '../services/ragService';
+
+export const chatRouter = Router();
+chatRouter.use(authenticate);
+
+// POST /api/chat/:repoId — send a message, get RAG answer
+chatRouter.post('/:repoId', async (req: Request, res: Response) => {
+  try {
+    const { question } = req.body;
+    if (!question?.trim()) {
+      res.status(400).json({ error: 'question is required' });
+      return;
+    }
+
+    const repo = await Repository.findOne({ _id: req.params.repoId, userId: req.user._id });
+    if (!repo) { res.status(404).json({ error: 'Repo not found' }); return; }
+    if (repo.embeddingStatus !== 'done') {
+      res.status(400).json({ error: 'Repo is not fully embedded yet' });
+      return;
+    }
+
+    const { answer, sources } = await query(req.user._id.toString(), repo.repoSlug, question);
+
+    // Upsert chat session — one active session per repo
+    const userMessage = { role: 'user' as const, content: question, sources: [], createdAt: new Date() };
+    const assistantMessage = { role: 'assistant' as const, content: answer, sources, createdAt: new Date() };
+
+    const session = await ChatSession.findOneAndUpdate(
+      { userId: req.user._id, repoId: repo._id },
+      {
+        $push: { messages: { $each: [userMessage, assistantMessage] } },
+        $setOnInsert: { title: question.slice(0, 60) },
+      },
+      { upsert: true, new: true },
+    );
+
+    res.json({ answer, sources, sessionId: session._id });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// GET /api/chat/:repoId/history — get chat history for a repo
+chatRouter.get('/:repoId/history', async (req: Request, res: Response) => {
+  const session = await ChatSession.findOne({
+    userId: req.user._id,
+    repoId: req.params.repoId,
+  });
+  res.json(session ?? { messages: [] });
+});
+
+// DELETE /api/chat/:repoId/history — clear chat history
+chatRouter.delete('/:repoId/history', async (req: Request, res: Response) => {
+  await ChatSession.findOneAndDelete({ userId: req.user._id, repoId: req.params.repoId });
+  res.json({ ok: true });
+});

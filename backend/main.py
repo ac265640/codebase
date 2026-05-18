@@ -29,7 +29,7 @@ def get_repo_collection(repo_name: str):
 # We allow both localhost and 127.0.0.1 to be safe.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -209,7 +209,7 @@ def create_embeddings(repo_name: str = Form(...)):
             res = requests.post(
                 "https://api.cohere.com/v1/embed",
                 headers={"Authorization": f"Bearer {COHERE_API_KEY}"},
-                json={"texts": docs_batch, "model": "small", "truncate": "END"}
+                json={"texts": docs_batch, "model": "embed-english-v3.0", "input_type": "search_document", "truncate": "END"}
             )
             res.raise_for_status()
             embeddings = res.json()["embeddings"]
@@ -270,7 +270,7 @@ def chat_with_repo(repo_name: str = Form(...), question: str = Form(...)):
         embed_res = requests.post(
             "https://api.cohere.com/v1/embed",
             headers=headers,
-            json={"texts": [question], "model": "small", "input_type": "search_query"}
+            json={"texts": [question], "model": "embed-english-v3.0", "input_type": "search_query"}
         )
         embed_res.raise_for_status()
         q_embedding = embed_res.json()["embeddings"][0]
