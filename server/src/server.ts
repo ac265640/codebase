@@ -6,8 +6,9 @@ import mongoose from 'mongoose';
 import { app } from './app';
 import { connectDB } from './config/db';
 import { initSocket } from './services/socketManager';
+import './workers/embedWorker'; // Initialize BullMQ worker
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 async function start() {
   await connectDB();
@@ -25,10 +26,3 @@ process.on('SIGTERM', async () => {
 });
 
 start().catch(console.error);
-
-import mongoose from 'mongoose';
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received — shutting down');
-  await mongoose.connection.close();
-  process.exit(0);
-});

@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/authenticate';
+import { trackUsage } from '../middleware/trackUsage';
 import { Repository } from '../models/Repository';
 import { ChatSession } from '../models/ChatSession';
 import { query } from '../services/ragService';
@@ -8,7 +9,7 @@ export const chatRouter = Router();
 chatRouter.use(authenticate);
 
 // POST /api/chat/:repoId — send a message, get RAG answer
-chatRouter.post('/:repoId', async (req: Request, res: Response) => {
+chatRouter.post('/:repoId', trackUsage(150), async (req: Request, res: Response) => {
   try {
     const { question } = req.body;
     if (!question?.trim()) {
@@ -23,11 +24,11 @@ chatRouter.post('/:repoId', async (req: Request, res: Response) => {
       return;
     }
 
-    const { answer, sources } = await query(req.user._id.toString(), repo.repoSlug, question);
+    const { answer, sources, provider } = await query(req.user._id.toString(), repo.repoSlug, question);
 
     // Upsert chat session — one active session per repo
-    const userMessage = { role: 'user' as const, content: question, sources: [], createdAt: new Date() };
-    const assistantMessage = { role: 'assistant' as const, content: answer, sources, createdAt: new Date() };
+    const userMessage = { role: 'user' as const, content: question, sources: [] as any[], createdAt: new Date() };
+    const assistantMessage = { role: 'assistant' as const, content: answer, sources, provider, createdAt: new Date() };
 
     const session = await ChatSession.findOneAndUpdate(
       { userId: req.user._id, repoId: repo._id },
@@ -38,7 +39,7 @@ chatRouter.post('/:repoId', async (req: Request, res: Response) => {
       { upsert: true, new: true },
     );
 
-    res.json({ answer, sources, sessionId: session._id });
+    res.json({ answer, sources, provider, sessionId: session._id });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

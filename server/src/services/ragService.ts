@@ -1,28 +1,23 @@
-import { ChromaClient } from 'chromadb';
 import { CohereClient } from 'cohere-ai';
 import { getCollectionName } from './embedService';
 import fs from 'fs';
 import path from 'path';
 import { getRepoPath } from './gitService';
+import { LocalVectorStore } from './localVectorStore';
 
-const CHROMA_PATH = process.env.CHROMA_PERSIST_PATH || './chroma_db';
-
-let _chroma: ChromaClient | null = null;
 let _cohere: CohereClient | null = null;
-
-function getChroma(): ChromaClient {
-  if (!_chroma) _chroma = new ChromaClient({ path: CHROMA_PATH });
-  return _chroma;
-}
 
 function getCohere(): CohereClient {
   if (!_cohere) _cohere = new CohereClient({ token: process.env.COHERE_API_KEY });
   return _cohere;
 }
 
+import { generateChatResponse } from './llmProvider';
+
 export interface RAGResult {
   answer: string;
   sources: Array<{ file: string; preview: string }>;
+  provider: string;
 }
 
 export async function query(
@@ -30,7 +25,6 @@ export async function query(
   repoSlug: string,
   question: string,
 ): Promise<RAGResult> {
-  const chroma = getChroma();
   const cohere = getCohere();
   const collectionName = getCollectionName(userId, repoSlug);
 
@@ -44,10 +38,9 @@ export async function query(
   const queryEmbedding = (qEmbed.embeddings as number[][])[0];
 
   // 2. Retrieve top-5 relevant chunks
-  let collection;
-  try {
-    collection = await chroma.getCollection({ name: collectionName });
-  } catch {
+  const collection = new LocalVectorStore(collectionName);
+  const count = await collection.count();
+  if (count === 0) {
     throw new Error('Repository not embedded yet. Please embed it first.');
   }
 
@@ -84,14 +77,8 @@ QUESTION: ${question}
 
 ANSWER:`;
 
-  // 5. Generate answer with Cohere
-  const chatResponse = await cohere.chat({
-    model: 'command-r',
-    message: prompt,
-    maxTokens: 800,
-  });
-
-  const answer = chatResponse.text;
+  // 5. Generate answer using Multi-LLM provider
+  const chatResponse = await generateChatResponse(prompt);
 
   // 6. Build source citations
   const sources = metas
@@ -101,5 +88,5 @@ ANSWER:`;
       preview: chunks[metas.indexOf(m)]?.slice(0, 150) ?? '',
     }));
 
-  return { answer, sources };
+  return { answer: chatResponse.answer, sources, provider: chatResponse.provider };
 }

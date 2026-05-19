@@ -23,12 +23,14 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.16.0",
+    "ogl": "^1.0.11",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.15.1",
     "socket.io-client": "^4.8.3",
     "tailwind-merge": "^3.6.0",
     "tailwindcss-animate": "^1.0.7",
+    "tslib": "^2.8.1",
     "zustand": "^5.0.13"
   },
   "devDependencies": {

@@ -24,29 +24,31 @@ export default function Dashboard() {
   return (
     <AppLayout activeRepoId={activeRepoId} onSelectRepo={setActiveRepoId}>
       {!activeRepoId ? (
-        <div className="h-full flex flex-col items-center justify-center text-center p-8 bg-zinc-950">
-          <div className="w-20 h-20 bg-indigo-900/20 rounded-full flex items-center justify-center mb-6 border border-indigo-500/20 shadow-[0_0_40px_rgba(99,102,241,0.1)]">
-            <div className="w-10 h-10 bg-indigo-500/20 rounded-full flex items-center justify-center">
-              <div className="w-5 h-5 bg-indigo-400 rounded-full" />
+        <div className="h-full flex flex-col items-center justify-center p-8 bg-[#2d2d2d] sm:bg-zinc-950">
+          <div className="max-w-2xl w-full flex flex-col items-center text-center space-y-6">
+            <div className="w-16 h-16 bg-[#e9e8e5] dark:bg-zinc-800 rounded-2xl flex items-center justify-center shadow-sm mb-2 transform rotate-3">
+              <span className="text-3xl">✨</span>
             </div>
+            <h2 className="text-4xl font-semibold tracking-tight text-zinc-100 font-serif">Good to see you</h2>
+            <p className="text-lg text-zinc-400 max-w-md mx-auto">
+              Select a repository from the sidebar to begin exploring your codebase, or click "Add Repository" to index a new one.
+            </p>
           </div>
-          <h2 className="text-3xl font-bold tracking-tight text-white mb-3">Welcome to CodexAI</h2>
-          <p className="text-lg text-zinc-400 max-w-md">
-            Select a repository from the sidebar or add a new one to start asking questions about your codebase.
-          </p>
         </div>
       ) : isLoading ? (
         <div className="h-full flex items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
         </div>
       ) : activeRepo?.embeddingStatus !== 'done' ? (
-        <div className="h-full flex flex-col items-center justify-center text-center p-8 bg-zinc-950">
-          <Loader2 className="h-10 w-10 animate-spin text-zinc-500 mb-6" />
-          <h2 className="text-2xl font-bold tracking-tight text-white mb-2">Repository is processing</h2>
-          <p className="text-zinc-400">
-            We are currently cloning and embedding the codebase. <br/>
-            Check the sidebar for real-time progress.
-          </p>
+        <div className="h-full flex flex-col items-center justify-center p-8 bg-[#2d2d2d] sm:bg-zinc-950">
+          <div className="max-w-md w-full flex flex-col items-center text-center space-y-4">
+            <Loader2 className="h-8 w-8 animate-spin text-zinc-400 mb-2" />
+            <h2 className="text-2xl font-semibold tracking-tight text-zinc-100 font-serif">Reading repository...</h2>
+            <p className="text-zinc-400">
+              We are currently parsing and indexing the codebase. <br/>
+              Check the sidebar for real-time progress.
+            </p>
+          </div>
         </div>
       ) : (
         <div className="flex h-full overflow-hidden">

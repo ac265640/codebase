@@ -12,8 +12,13 @@ reposRouter.use(authenticate);
 
 // GET /api/repos — list user's repos
 reposRouter.get('/', async (req: Request, res: Response) => {
-  const repos = await Repository.find({ userId: req.user._id }).sort({ createdAt: -1 });
-  res.json(repos);
+  try {
+    const repos = await Repository.find({ userId: req.user._id }).sort({ createdAt: -1 });
+    res.json(repos);
+  } catch (err) {
+    console.error('Error in GET /api/repos:', err);
+    res.status(500).json({ error: String(err) });
+  }
 });
 
 // POST /api/repos — clone + embed a new repo
@@ -52,48 +57,11 @@ reposRouter.post('/', async (req: Request, res: Response) => {
 
     // Start background job
     const userId = req.user._id.toString();
-    enqueue(`embed_${repo._id}`, async () => {
-      try {
-        // Stage 1: Clone
-        await Repository.findByIdAndUpdate(repo._id, { embeddingStatus: 'processing', embeddingProgress: 10 });
-        emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 10, stage: 'cloning' });
-
-        await cloneRepo(userId, repoUrl, repoSlug);
-        emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 35, stage: 'cloned' });
-
-        // Stage 2: Parse files
-        await Repository.findByIdAndUpdate(repo._id, { embeddingProgress: 40 });
-        emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 40, stage: 'parsing' });
-        const files = await getEmbeddableFiles(userId, repoSlug);
-
-        if (files.length === 0) {
-          throw new Error('No embeddable files found in this repository');
-        }
-
-        // Stage 3: Embed with progress updates
-        emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 45, stage: 'embedding' });
-        const { fileCount, chunkCount } = await embedFiles(userId, repoSlug, files, (pct) => {
-          // Map embed progress (0-100) to overall progress (45-95)
-          const overall = 45 + Math.round(pct * 0.5);
-          emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: overall, stage: 'embedding' });
-        });
-
-        await Repository.findByIdAndUpdate(repo._id, {
-          embeddingStatus: 'done',
-          embeddingProgress: 100,
-          fileCount,
-          chunkCount,
-          lastEmbeddedAt: new Date(),
-        });
-
-        emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 100, stage: 'done' });
-      } catch (err) {
-        await Repository.findByIdAndUpdate(repo._id, {
-          embeddingStatus: 'failed',
-          errorMessage: String(err),
-        });
-        emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 0, stage: 'failed', error: String(err) });
-      }
+    enqueue(`embed_${repo._id}`, {
+      userId,
+      repoId: repo._id.toString(),
+      repoUrl,
+      repoSlug,
     });
 
     res.status(201).json(repo);
@@ -134,26 +102,11 @@ reposRouter.post('/:id/re-embed', async (req: Request, res: Response) => {
   });
 
   const userId = req.user._id.toString();
-  enqueue(`embed_${repo._id}_${Date.now()}`, async () => {
-    try {
-      await Repository.findByIdAndUpdate(repo._id, { embeddingStatus: 'processing', embeddingProgress: 10 });
-      emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 10, stage: 'cloning' });
-      await cloneRepo(userId, repo.repoUrl, repo.repoSlug);
-
-      const files = await getEmbeddableFiles(userId, repo.repoSlug);
-      emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 40, stage: 'embedding' });
-      const { fileCount, chunkCount } = await embedFiles(userId, repo.repoSlug, files, (pct) => {
-        emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 40 + Math.round(pct * 0.55), stage: 'embedding' });
-      });
-
-      await Repository.findByIdAndUpdate(repo._id, {
-        embeddingStatus: 'done', embeddingProgress: 100, fileCount, chunkCount, lastEmbeddedAt: new Date(),
-      });
-      emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 100, stage: 'done' });
-    } catch (err) {
-      await Repository.findByIdAndUpdate(repo._id, { embeddingStatus: 'failed', errorMessage: String(err) });
-      emitToUser(userId, 'embed-progress', { repoId: repo._id, progress: 0, stage: 'failed', error: String(err) });
-    }
+  enqueue(`embed_${repo._id}_${Date.now()}`, {
+    userId,
+    repoId: repo._id.toString(),
+    repoUrl: repo.repoUrl,
+    repoSlug: repo.repoSlug,
   });
 
   res.json({ ok: true, message: 'Re-embedding started' });

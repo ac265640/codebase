@@ -7,7 +7,13 @@ let io: Server;
 export function initSocket(httpServer: HttpServer): void {
   io = new Server(httpServer, {
     cors: {
-      origin: process.env.CLIENT_URL || 'http://localhost:3000',
+      origin: (origin, callback) => {
+        if (!origin || origin.startsWith('http://localhost:') || origin === process.env.CLIENT_URL) {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
+      },
       credentials: true,
     },
   });

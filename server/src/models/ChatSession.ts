@@ -4,6 +4,7 @@ export interface IMessage {
   role: 'user' | 'assistant';
   content: string;
   sources: Array<{ file: string; preview: string }>;
+  provider?: string;
   createdAt: Date;
 }
 
@@ -21,6 +22,7 @@ const MessageSchema = new Schema<IMessage>({
   role: { type: String, enum: ['user', 'assistant'], required: true },
   content: { type: String, required: true },
   sources: [{ file: String, preview: String }],
+  provider: { type: String },
   createdAt: { type: Date, default: Date.now },
 }, { _id: false });
 

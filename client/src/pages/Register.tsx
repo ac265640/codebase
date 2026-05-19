@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import { useAuthStore } from '../store/authStore';
 import api from '../api/client';
+import LightRays from '@/components/ui/LightRays';
 
 export default function Register() {
   const [email, setEmail] = useState('');
@@ -32,8 +33,21 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md bg-zinc-900 border-zinc-800 text-slate-50">
+    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4 relative overflow-hidden">
+      <LightRays
+        raysOrigin="top-center"
+        raysColor="#4f46e5"
+        raysSpeed={1.5}
+        lightSpread={0.8}
+        rayLength={1.2}
+        followMouse={true}
+        mouseInfluence={0.1}
+        noiseAmount={0.05}
+        distortion={0.05}
+        className="opacity-70"
+      />
+
+      <Card className="w-full max-w-md bg-zinc-900/60 backdrop-blur-xl border-zinc-800/60 shadow-2xl shadow-indigo-900/10 text-slate-50 relative z-10">
         <CardHeader className="space-y-1 text-center">
           <CardTitle className="text-2xl font-bold tracking-tight">CodexAI</CardTitle>
           <p className="text-sm text-zinc-400">Create a new account</p>
@@ -52,7 +66,7 @@ export default function Register() {
                 required 
                 value={displayName}
                 onChange={e => setDisplayName(e.target.value)}
-                className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
+                className="bg-zinc-800/50 backdrop-blur-sm border-zinc-700/50 text-white placeholder:text-zinc-500 focus-visible:ring-indigo-500"
               />
             </div>
             <div className="space-y-2">
@@ -62,7 +76,7 @@ export default function Register() {
                 required 
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
+                className="bg-zinc-800/50 backdrop-blur-sm border-zinc-700/50 text-white placeholder:text-zinc-500 focus-visible:ring-indigo-500"
               />
             </div>
             <div className="space-y-2">
@@ -73,12 +87,12 @@ export default function Register() {
                 minLength={8}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
+                className="bg-zinc-800/50 backdrop-blur-sm border-zinc-700/50 text-white placeholder:text-zinc-500 focus-visible:ring-indigo-500"
               />
             </div>
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">
-            <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700" disabled={loading}>
+            <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 transition-colors shadow-lg shadow-indigo-900/20" disabled={loading}>
               {loading ? 'Creating account...' : 'Create Account'}
             </Button>
             <div className="text-sm text-center text-zinc-400">

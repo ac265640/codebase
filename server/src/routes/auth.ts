@@ -93,5 +93,62 @@ authRouter.post('/logout', (_req: Request, res: Response) => {
 // GET /api/auth/me
 authRouter.get('/me', authenticate, (req: Request, res: Response) => {
   const u = req.user;
-  res.json({ id: u._id, email: u.email, displayName: u.displayName, avatar: u.avatar });
+  res.json({ 
+    id: u._id, 
+    email: u.email, 
+    displayName: u.displayName, 
+    avatar: u.avatar,
+    isEmailVerified: u.isEmailVerified,
+    googleId: u.googleId
+  });
+});
+
+import passport from 'passport';
+import { sendOtpEmail } from '../services/emailService';
+
+// GET /api/auth/google
+authRouter.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+
+// GET /api/auth/google/callback
+authRouter.get('/google/callback', passport.authenticate('google', { session: false }), (req: Request, res: Response) => {
+  if (!req.user) {
+    return res.redirect(`${process.env.CLIENT_URL}/login?error=GoogleAuthFailed`);
+  }
+  setTokenCookies(res, req.user._id.toString());
+  res.redirect(`${process.env.CLIENT_URL}/dashboard`);
+});
+
+// POST /api/auth/verify-otp
+authRouter.post('/verify-otp', authenticate, async (req: Request, res: Response) => {
+  const { otp } = req.body;
+  if (!otp) return res.status(400).json({ error: 'OTP is required' });
+
+  const user = req.user;
+  if (user.isEmailVerified) return res.status(400).json({ error: 'Email already verified' });
+
+  if (user.otpCode !== otp || !user.otpExpiresAt || user.otpExpiresAt < new Date()) {
+    return res.status(400).json({ error: 'Invalid or expired OTP' });
+  }
+
+  user.isEmailVerified = true;
+  user.otpCode = undefined;
+  user.otpExpiresAt = undefined;
+  await user.save();
+
+  res.json({ ok: true, message: 'Email verified successfully' });
+});
+
+// POST /api/auth/resend-otp
+authRouter.post('/resend-otp', authenticate, async (req: Request, res: Response) => {
+  const user = req.user;
+  if (user.isEmailVerified) return res.status(400).json({ error: 'Email already verified' });
+
+  const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit OTP
+  user.otpCode = otp;
+  user.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+  await user.save();
+
+  await sendOtpEmail(user.email, otp);
+
+  res.json({ ok: true, message: 'OTP sent' });
 });

@@ -1,18 +1,11 @@
-import { ChromaClient } from 'chromadb';
 import { CohereClient } from 'cohere-ai';
 import { ParsedFile } from './fileService';
+import { LocalVectorStore, deleteCollectionFile } from './localVectorStore';
 
-const CHROMA_PATH = process.env.CHROMA_PERSIST_PATH || './chroma_db';
 const BATCH_SIZE = 96; // Cohere embed API limit
 
 // Singleton clients
-let _chroma: ChromaClient | null = null;
 let _cohere: CohereClient | null = null;
-
-function getChroma(): ChromaClient {
-  if (!_chroma) _chroma = new ChromaClient({ path: CHROMA_PATH });
-  return _chroma;
-}
 
 function getCohere(): CohereClient {
   if (!_cohere) _cohere = new CohereClient({ token: process.env.COHERE_API_KEY });
@@ -20,7 +13,6 @@ function getCohere(): CohereClient {
 }
 
 export function getCollectionName(userId: string, repoSlug: string): string {
-  // ChromaDB collection names: alphanumeric + underscores only, max 63 chars
   const safe = `u_${userId}_${repoSlug}`.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 63);
   return safe;
 }
@@ -31,19 +23,13 @@ export async function embedFiles(
   files: ParsedFile[],
   onProgress?: (pct: number) => void,
 ): Promise<{ fileCount: number; chunkCount: number }> {
-  const chroma = getChroma();
   const cohere = getCohere();
   const collectionName = getCollectionName(userId, repoSlug);
 
   // Delete existing collection if re-embedding
-  try {
-    await chroma.deleteCollection({ name: collectionName });
-  } catch {
-    // Collection didn't exist — fine
-  }
-
-  const collection = await chroma.createCollection({ name: collectionName });
-
+  deleteCollectionFile(collectionName);
+  
+  const collection = new LocalVectorStore(collectionName);
   let embedded = 0;
 
   for (let i = 0; i < files.length; i += BATCH_SIZE) {
@@ -55,7 +41,6 @@ export async function embedFiles(
       inputType: 'search_document',
     });
 
-    // Cohere v3 returns embeddings as float arrays
     const embeddings = embedResponse.embeddings as number[][];
 
     await collection.upsert({
@@ -75,10 +60,5 @@ export async function embedFiles(
 }
 
 export async function deleteCollection(userId: string, repoSlug: string): Promise<void> {
-  const chroma = getChroma();
-  try {
-    await chroma.deleteCollection({ name: getCollectionName(userId, repoSlug) });
-  } catch {
-    // Already gone
-  }
+  deleteCollectionFile(getCollectionName(userId, repoSlug));
 }

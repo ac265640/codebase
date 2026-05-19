@@ -2023,3 +2023,16 @@ At the end of Day 5, verify every item:
 *Stack: MongoDB + Express + React + Node.js + Cohere + ChromaDB + Socket.IO*
 *Deploy: Vercel (free) + Render (free) + MongoDB Atlas M0 (free)*
 *No FastAPI. No Redis. No paid APIs. No bloat.*
+
+after completing all this i want you to build and integrate:
+
+
+Google OAuth / Passport.js
+Billing, Stripe, subscription plans, plan enforcement
+API key system for external programmatic access
+Usage metering, UsageLog model, /api/usage routes
+Email OTP verification, Nodemailer
+Gemini fallback LLM (Cohere free tier is sufficient for demo)
+Bull queues, Redis (not available on Render free tier)
+Multi-LLM provider badges on the frontend
+Docker (docker-compose for local is fine, but not required)

@@ -8,7 +8,7 @@ userRouter.use(authenticate);
 // GET /api/user/profile
 userRouter.get('/profile', (req: Request, res: Response) => {
   const u = req.user;
-  res.json({ id: u._id, email: u.email, displayName: u.displayName, avatar: u.avatar });
+  res.json({ id: u!._id, email: u!.email, displayName: u!.displayName, avatar: u!.avatar });
 });
 
 // PATCH /api/user/profile
@@ -19,7 +19,7 @@ userRouter.patch('/profile', async (req: Request, res: Response) => {
     return;
   }
   const updated = await User.findByIdAndUpdate(
-    req.user._id,
+    req.user!._id,
     { displayName: displayName.trim() },
     { new: true, select: '-passwordHash' }
   );
