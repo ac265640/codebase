@@ -1,17 +1,28 @@
 import { ChromaClient } from 'chromadb';
 import path from 'path';
+import { LocalVectorStore, deleteCollectionFile } from './localVectorStore';
 
 const CHROMA_PATH = path.resolve(
   process.env.CHROMA_PERSIST_PATH || './chroma_db'
 );
 
-const chromaEndpoint = process.env.CHROMA_URL || 
-  (CHROMA_PATH.startsWith('http://') || CHROMA_PATH.startsWith('https://') ? CHROMA_PATH : 'http://localhost:8000');
+const chromaEndpoint = process.env.CHROMA_URL;
 
-export const chromaClient = new ChromaClient({ path: chromaEndpoint });
+let chromaClient: ChromaClient | null = null;
+let useLocalStore = !chromaEndpoint; // Default to LocalVectorStore immediately if CHROMA_URL is not set
+
+if (chromaEndpoint) {
+  try {
+    chromaClient = new ChromaClient({ path: chromaEndpoint });
+  } catch (err) {
+    console.error('Failed to initialize ChromaClient:', err);
+    useLocalStore = true;
+  }
+}
 
 export class ChromaStore {
   private collectionName: string;
+  private localStore: LocalVectorStore | null = null;
 
   constructor(collectionName: string) {
     // ChromaDB collection names must be 3-63 characters long, alphanumeric/hyphen/underscore, start/end with alphanumeric
@@ -29,29 +40,58 @@ export class ChromaStore {
     while (this.collectionName.length < 3) {
       this.collectionName += '_';
     }
+
+    if (useLocalStore) {
+      this.localStore = new LocalVectorStore(this.collectionName);
+    }
   }
 
   private async getCollection() {
-    return await chromaClient.getOrCreateCollection({
-      name: this.collectionName,
-    });
+    if (useLocalStore) {
+      if (!this.localStore) {
+        this.localStore = new LocalVectorStore(this.collectionName);
+      }
+      return null;
+    }
+
+    try {
+      if (chromaClient) {
+        return await chromaClient.getOrCreateCollection({
+          name: this.collectionName,
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to connect to ChromaDB, falling back to LocalVectorStore:', (err as Error).message);
+      useLocalStore = true;
+      this.localStore = new LocalVectorStore(this.collectionName);
+    }
+    return null;
   }
 
   async upsert({ ids, embeddings, metadatas, documents }: { ids: string[], embeddings: number[][], metadatas: any[], documents: string[] }) {
     const collection = await this.getCollection();
-    // Prepare documents & metadatas to match ChromaDB upsert signature
-    await collection.upsert({
-      ids,
-      embeddings,
-      metadatas,
-      documents,
-    });
+    if (useLocalStore && this.localStore) {
+      await this.localStore.upsert({ ids, embeddings, metadatas, documents });
+    } else if (collection) {
+      await collection.upsert({
+        ids,
+        embeddings,
+        metadatas,
+        documents,
+      });
+    }
   }
 
   async count() {
     try {
       const collection = await this.getCollection();
-      return await collection.count();
+      if (useLocalStore && this.localStore) {
+        return await this.localStore.count();
+      }
+      if (collection) {
+        return await collection.count();
+      }
+      return 0;
     } catch (err) {
       console.error('Error counting collection documents:', err);
       return 0;
@@ -60,33 +100,52 @@ export class ChromaStore {
 
   async query({ queryEmbeddings, nResults = 5 }: { queryEmbeddings: number[][], nResults?: number }) {
     const collection = await this.getCollection();
-    const res = await collection.query({
-      queryEmbeddings,
-      nResults,
-    });
-    
+    if (useLocalStore && this.localStore) {
+      return await this.localStore.query({ queryEmbeddings, nResults });
+    }
+    if (collection) {
+      const res = await collection.query({
+        queryEmbeddings,
+        nResults,
+      });
+      
+      return {
+        ids: res.ids || [[]],
+        metadatas: res.metadatas || [[]],
+        documents: res.documents || [[]],
+        distances: res.distances || [[]],
+      };
+    }
     return {
-      ids: res.ids || [[]],
-      metadatas: res.metadatas || [[]],
-      documents: res.documents || [[]],
-      distances: res.distances || [[]],
+      ids: [[]],
+      metadatas: [[]],
+      documents: [[]],
+      distances: [[]],
     };
   }
 }
 
 export async function deleteChromaCollection(collectionName: string) {
+  let safeName = collectionName.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+  if (!/^[a-z0-9]/.test(safeName)) {
+    safeName = 'col_' + safeName;
+  }
+  safeName = safeName.slice(0, 63);
+  while (safeName.length < 3) {
+    safeName += '_';
+  }
+
+  if (useLocalStore) {
+    deleteCollectionFile(safeName);
+    return;
+  }
+
   try {
-    let safeName = collectionName.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
-    if (!/^[a-z0-9]/.test(safeName)) {
-      safeName = 'col_' + safeName;
+    if (chromaClient) {
+      await chromaClient.deleteCollection({ name: safeName });
     }
-    safeName = safeName.slice(0, 63);
-    while (safeName.length < 3) {
-      safeName += '_';
-    }
-    await chromaClient.deleteCollection({ name: safeName });
   } catch (err) {
-    // If it doesn't exist, we can ignore the deletion error safely
-    console.warn(`Could not delete Chroma collection ${collectionName}:`, (err as Error).message);
+    console.warn(`Could not delete Chroma collection ${collectionName}, deleting local fallback:`, (err as Error).message);
+    deleteCollectionFile(safeName);
   }
 }

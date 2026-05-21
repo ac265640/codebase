@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import api from '../api/client';
@@ -19,7 +19,10 @@ function Protected({ children }: { children: React.ReactNode }) {
 // This is critical for Google OAuth which redirects the browser, clearing in-memory state.
 function AuthHydration({ children }: { children: React.ReactNode }) {
   const { setUser, clearUser } = useAuthStore();
-  const anonymousPaths = ['/login', '/register', '/forgot-password', '/reset-password', '/'];
+  const [isHydrating, setIsHydrating] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return !!(params.get('access_token') && params.get('refresh_token'));
+  });
 
   useEffect(() => {
     // 1. Check if tokens are present in URL search params (from cross-origin Google OAuth redirect)
@@ -40,10 +43,14 @@ function AuthHydration({ children }: { children: React.ReactNode }) {
       })
       .catch(() => {
         clearUser();
+      })
+      .finally(() => {
+        setIsHydrating(false);
       });
       return;
     }
 
+    const anonymousPaths = ['/login', '/register', '/forgot-password', '/reset-password', '/'];
     if (anonymousPaths.includes(window.location.pathname)) {
       return;
     }
@@ -52,6 +59,15 @@ function AuthHydration({ children }: { children: React.ReactNode }) {
       .then(res => setUser(res.data))
       .catch(() => clearUser());
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (isHydrating) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-zinc-100 p-4">
+        <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-6"></div>
+        <p className="text-zinc-400 font-medium tracking-wide animate-pulse">Completing Google authentication...</p>
+      </div>
+    );
+  }
 
   return <>{children}</>;
 }
