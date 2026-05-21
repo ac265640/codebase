@@ -237,7 +237,7 @@ authRouter.post('/resend-otp', authenticate, async (req: Request, res: Response)
   } catch (e) {
     console.error('Failed to send resend OTP email:', e);
     res.status(500).json({
-      error: 'Failed to send verification email. Please check server logs.',
+      error: `Failed to send email: ${(e as Error).message || String(e)}`,
       details: (e as Error).message || String(e)
     });
   }
