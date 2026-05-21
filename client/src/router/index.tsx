@@ -7,8 +7,7 @@ import Login from '../pages/Login';
 import Register from '../pages/Register';
 import Dashboard from '../pages/Dashboard';
 import Settings from '../pages/Settings';
-import ForgotPassword from '../pages/ForgotPassword';
-import ResetPassword from '../pages/ResetPassword';
+
 import AuthCallback from '../pages/AuthCallback';
 import GuestRepoPage from '../pages/GuestRepoPage';
 
@@ -52,7 +51,7 @@ function AuthHydration({ children }: { children: React.ReactNode }) {
       return;
     }
 
-        const anonymousPaths = ['/login', '/register', '/forgot-password', '/reset-password', '/auth/callback', '/'];
+        const anonymousPaths = ['/login', '/register', '/auth/callback', '/'];
     if (window.location.pathname.startsWith('/guest/') || anonymousPaths.includes(window.location.pathname)) {
       return;
     }
@@ -82,8 +81,7 @@ export function AppRouter() {
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
+
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/guest/:repoSlug" element={<GuestRepoPage />} />
           <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />

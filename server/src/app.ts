@@ -74,15 +74,7 @@ app.use(rateLimit({
   keyGenerator: getClientIp,
 }));
 
-// Forgot-password rate limit — max 3 reset requests per IP per hour
-app.use('/api/auth/forgot-password', rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 3,
-  message: { error: 'Too many reset requests. Please wait before trying again.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: getClientIp,
-}));
+
 
 app.use('/api/auth', authRouter);
 app.use('/api/repos', reposRouter);

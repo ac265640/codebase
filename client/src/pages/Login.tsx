@@ -99,12 +99,6 @@ export default function Login() {
                 onChange={e => setPassword(e.target.value)}
                 className="bg-zinc-800/50 backdrop-blur-sm border-zinc-700/50 text-white placeholder:text-zinc-500 focus-visible:ring-indigo-500"
               />
-              <div style={{ textAlign: 'right', marginTop: '4px' }}>
-                <Link to="/forgot-password"
-                   style={{ fontSize: '14px', color: '#6366f1', textDecoration: 'none' }}>
-                  Forgot password?
-                </Link>
-              </div>
             </div>
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">

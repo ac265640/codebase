@@ -1,11 +1,9 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import crypto from 'crypto';
 import passport from 'passport';
 import { User, IUser } from '../models/User';
 import { setTokenCookies, clearTokenCookies, verifyRefreshToken, signAccessToken, signRefreshToken } from '../utils/tokens';
 import { authenticate } from '../middleware/authenticate';
-import { sendPasswordResetEmail } from '../services/emailService';
 
 export const authRouter = Router();
 
@@ -200,94 +198,3 @@ authRouter.get(['/google/callback', '/google/call'],
     res.redirect(`${process.env.CLIENT_URL}/auth/callback?token=${handoffToken}`);
   }
 );
-
-// POST /api/auth/forgot-password
-authRouter.post('/forgot-password', async (req: Request, res: Response) => {
-  try {
-    const { email } = req.body;
-    const SUCCESS_MSG = { message: 'If that email is registered, a reset link has been sent.' };
-
-    if (!email || !isValidGmailAddress(email)) {
-      res.json(SUCCESS_MSG);
-      return;
-    }
-
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) {
-      res.json(SUCCESS_MSG);
-      return;
-    }
-
-    const rawToken = crypto.randomBytes(32).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-
-    await User.findByIdAndUpdate(user._id, {
-      passwordResetToken: tokenHash,
-      passwordResetExpiry: expiry,
-    });
-
-    const resetUrl = `${process.env.CLIENT_URL}/reset-password?token=${rawToken}&email=${encodeURIComponent(email)}`;
-    console.log(`\n-----------------------------------------`);
-    console.log(`[Password Reset] Link for ${email}: ${resetUrl}`);
-    console.log(`-----------------------------------------\n`);
-
-    try {
-      await sendPasswordResetEmail(email, resetUrl);
-    } catch (emailErr) {
-      console.error('[Password Reset] Email send failed:', emailErr);
-      // Still return success to prevent email enumeration
-    }
-
-    res.json(SUCCESS_MSG);
-  } catch (err) {
-    console.error('Forgot password error:', err);
-    res.json({ message: 'If that email is registered, a reset link has been sent.' });
-  }
-});
-
-// POST /api/auth/reset-password
-authRouter.post('/reset-password', async (req: Request, res: Response) => {
-  try {
-    const { token, email, newPassword } = req.body;
-
-    if (!token || !email || !newPassword) {
-      res.status(400).json({ error: 'token, email, and newPassword are required' });
-      return;
-    }
-
-    if (newPassword.length < 8) {
-      res.status(400).json({ error: 'Password must be at least 8 characters' });
-      return;
-    }
-
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-
-    const user = await User.findOne({
-      email: email.toLowerCase(),
-      passwordResetToken: tokenHash,
-      passwordResetExpiry: { $gt: new Date() },
-    });
-
-    if (!user) {
-      res.status(400).json({ error: 'Reset link is invalid or has expired. Please request a new one.' });
-      return;
-    }
-
-    const newHash = await bcrypt.hash(newPassword, 12);
-
-    await User.findByIdAndUpdate(user._id, {
-      passwordHash: newHash,
-      passwordResetToken: undefined,
-      passwordResetExpiry: undefined,
-      $unset: { passwordResetToken: '', passwordResetExpiry: '' },
-    });
-
-    res.clearCookie('access_token');
-    res.clearCookie('refresh_token');
-
-    res.json({ message: 'Password reset successfully. You can now log in.' });
-  } catch (err) {
-    res.status(500).json({ error: String(err) });
-  }
-});

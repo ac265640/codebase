@@ -8,16 +8,14 @@ import { connectDB } from './config/db';
 import { initSocket } from './services/socketManager';
 import './workers/embedWorker'; // Initialize BullMQ worker
 import { embedWorker } from './workers/embedWorker';
-import { verifyEmailConfig } from './services/emailService';
+import { deleteCollection } from './services/embedService';
 import fs from 'fs';
 import path from 'path';
-import { deleteCollection } from './services/embedService';
 
 const PORT = parseInt(process.env.PORT || '5000', 10);
 
 async function start() {
   await connectDB();
-  await verifyEmailConfig();
   const httpServer = http.createServer(app);
   initSocket(httpServer);
   httpServer.listen(PORT, '0.0.0.0', () => {
