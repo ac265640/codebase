@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import LightRays from '@/components/ui/LightRays';
-import { Terminal, Search, MessageSquare, Database, FileCode, Sparkles } from 'lucide-react';
+import { Terminal, Search, Database, FileCode, Sparkles } from 'lucide-react';
 
 export default function Landing() {
   return (

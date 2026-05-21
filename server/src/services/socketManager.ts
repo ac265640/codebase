@@ -5,17 +5,19 @@ import { verifyAccessToken } from '../utils/tokens';
 let io: Server;
 
 export function initSocket(httpServer: HttpServer): void {
+  const allowedOrigins = [
+    process.env.CLIENT_URL,           // production Vercel URL
+    'http://localhost:3000',           // local dev
+    'http://localhost:5173',           // Vite default port
+  ].filter(Boolean) as string[];
+
   io = new Server(httpServer, {
     cors: {
-      origin: (origin, callback) => {
-        if (!origin || origin.startsWith('http://localhost:') || origin === process.env.CLIENT_URL) {
-          callback(null, true);
-        } else {
-          callback(new Error('Not allowed by CORS'));
-        }
-      },
+      origin: allowedOrigins,   // same array as Express CORS — import or duplicate it
       credentials: true,
+      methods: ['GET', 'POST'],
     },
+    transports: ['websocket', 'polling'], // polling as fallback if WS blocked
   });
 
   io.use((socket, next) => {

@@ -1,7 +1,14 @@
 import { ChromaClient } from 'chromadb';
+import path from 'path';
 
-const chromaUrl = process.env.CHROMA_URL || 'http://localhost:8000';
-export const chromaClient = new ChromaClient({ path: chromaUrl });
+const CHROMA_PATH = path.resolve(
+  process.env.CHROMA_PERSIST_PATH || './chroma_db'
+);
+
+const chromaEndpoint = process.env.CHROMA_URL || 
+  (CHROMA_PATH.startsWith('http://') || CHROMA_PATH.startsWith('https://') ? CHROMA_PATH : 'http://localhost:8000');
+
+export const chromaClient = new ChromaClient({ path: chromaEndpoint });
 
 export class ChromaStore {
   private collectionName: string;

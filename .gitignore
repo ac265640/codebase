@@ -1,27 +1,44 @@
-# Python artifacts (FastAPI removed)
+# Environment
+.env
+.env.local
+.env.production
+server/.env
+client/.env
+backend/.env
+
+# Runtime data (never commit these)
+server/repos/
+server/chroma_db/
+backend/chroma/
+repos/
+data/
+
+# Build output
+dist/
+build/
+client/dist/
+
+# Dependencies
+node_modules/
+server/node_modules/
+client/node_modules/
+
+# Python artifacts
 __pycache__/
 *.pyc
 venv/
 .venv/
 
-# Node
-node_modules/
-dist/
-
-# Env files — never commit secrets
-.env
-*.env.local
-.env.production
-
-# Repos and ChromaDB (runtime data)
-server/repos/
-server/chroma_db/
-backend/chroma/
-repos/
-
-# Nested repos / tool configs
-claude-token-efficient/
-
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# Tooling / nested repos
+claude-token-efficient/

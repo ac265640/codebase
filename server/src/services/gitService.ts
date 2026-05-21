@@ -2,7 +2,7 @@ import simpleGit from 'simple-git';
 import path from 'path';
 import fs from 'fs';
 
-const REPOS_DIR = process.env.REPOS_DIR || './repos';
+const REPOS_DIR = path.resolve(process.env.REPOS_DIR || './repos');
 
 export function getRepoPath(userId: string, repoSlug: string): string {
   return path.join(REPOS_DIR, userId, repoSlug);

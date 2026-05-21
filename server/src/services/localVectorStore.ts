@@ -8,7 +8,7 @@ interface VectorDoc {
   document: string;
 }
 
-const STORE_DIR = process.env.CHROMA_PERSIST_PATH || './chroma_db';
+const STORE_DIR = path.resolve(process.env.CHROMA_PERSIST_PATH || './chroma_db');
 
 export class LocalVectorStore {
   private collectionName: string;

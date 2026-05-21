@@ -16,17 +16,22 @@ export const app = express();
 app.set('trust proxy', 1);
 
 app.use(helmet());
+const allowedOrigins = [
+  process.env.CLIENT_URL,           // production Vercel URL
+  'http://localhost:3000',           // local dev
+  'http://localhost:5173',           // Vite default port
+].filter(Boolean) as string[];
+
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow any localhost origin in development, or the exact CLIENT_URL
-    if (!origin || origin.startsWith('http://localhost:') || origin === process.env.CLIENT_URL) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
+    // Allow requests with no origin (curl, Postman, server-to-server)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS: origin ${origin} not allowed`));
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 import { billingRouter } from './routes/billing';
 

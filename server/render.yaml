@@ -3,18 +3,17 @@ services:
     name: codexai-server
     env: node
     region: oregon
+    plan: free
     buildCommand: npm install && npm run build
     startCommand: npm run start
+    healthCheckPath: /api/health
     disk:
-      name: codexai-data
+      name: codexai-persistent
       mountPath: /app/data
       sizeGB: 1
-    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 10000
       - key: CHROMA_PERSIST_PATH
         value: /app/data/chroma_db
       - key: REPOS_DIR
@@ -26,6 +25,24 @@ services:
       - key: JWT_REFRESH_SECRET
         sync: false
       - key: COHERE_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CALLBACK_URL
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_APP_PASSWORD
         sync: false
       - key: CLIENT_URL
         sync: false
