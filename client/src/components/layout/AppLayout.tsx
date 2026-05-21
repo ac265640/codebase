@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { Menu, X, ShieldAlert, Key, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sidebar } from './Sidebar';
@@ -7,10 +7,23 @@ import api from '@/api/client';
 import { useToast } from '@/components/ui/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 
+export interface OtpInputHandle {
+  reset: () => void;
+  getValue: () => string;
+}
+
 // 6-digit OTP input with auto-advance and backspace handling
-function OtpInput({ onComplete, disabled }: { onComplete: (otp: string) => void; disabled?: boolean }) {
+const OtpInput = forwardRef<OtpInputHandle, { onChange?: (otp: string) => void; disabled?: boolean }>(function OtpInput({ onChange, disabled }, ref) {
   const [values, setValues] = useState(['', '', '', '', '', '']);
   const inputs = useRef<Array<HTMLInputElement | null>>([]);
+
+  useImperativeHandle(ref, () => ({
+    reset: () => {
+      setValues(['', '', '', '', '', '']);
+      setTimeout(() => inputs.current[0]?.focus(), 50);
+    },
+    getValue: () => values.join(''),
+  }));
 
   function handleChange(idx: number, val: string) {
     if (!/^\d?$/.test(val)) return;
@@ -18,7 +31,7 @@ function OtpInput({ onComplete, disabled }: { onComplete: (otp: string) => void;
     next[idx] = val;
     setValues(next);
     if (val && idx < 5) inputs.current[idx + 1]?.focus();
-    if (next.every(v => v !== '')) onComplete(next.join(''));
+    onChange?.(next.join(''));
   }
 
   function handleKeyDown(idx: number, e: React.KeyboardEvent<HTMLInputElement>) {
@@ -36,7 +49,7 @@ function OtpInput({ onComplete, disabled }: { onComplete: (otp: string) => void;
     setValues(next);
     const lastFilled = Math.min(pasted.length, 5);
     inputs.current[lastFilled]?.focus();
-    if (pasted.length === 6) onComplete(pasted);
+    onChange?.(next.join(''));
   }
 
   return (
@@ -72,7 +85,7 @@ function OtpInput({ onComplete, disabled }: { onComplete: (otp: string) => void;
       ))}
     </div>
   );
-}
+});
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -91,6 +104,8 @@ export function AppLayout({ children, activeRepoId, onSelectRepo }: AppLayoutPro
   const [verifyError, setVerifyError] = useState('');
   const [resending, setResending] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0); // seconds remaining
+  const [otpValue, setOtpValue] = useState('');
+  const otpRef = useRef<OtpInputHandle>(null);
 
   // Resizing sidebar state and hook
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -168,16 +183,25 @@ export function AppLayout({ children, activeRepoId, onSelectRepo }: AppLayoutPro
     }
   };
 
-  const handleVerifyOtp = async (otp: string) => {
+  const handleVerifyOtp = async () => {
+    const otp = otpValue;
+    if (otp.length !== 6) {
+      setVerifyError('Please enter the full 6-digit code.');
+      return;
+    }
     setVerifyError('');
     setVerifying(true);
     try {
       await api.post('/auth/verify-email', { otp });
       if (user) setUser({ ...user, isEmailVerified: true });
       setShowVerifyModal(false);
+      setOtpValue('');
       toast({ title: 'Email Verified', description: 'Your account is now fully verified!' });
     } catch (err: any) {
-      setVerifyError(err.response?.data?.error || 'Invalid or expired code');
+      setVerifyError(err.response?.data?.error || 'Invalid or expired code. Request a new code.');
+      // Reset the OTP input so user can re-enter
+      otpRef.current?.reset();
+      setOtpValue('');
     } finally {
       setVerifying(false);
     }
@@ -282,7 +306,7 @@ export function AppLayout({ children, activeRepoId, onSelectRepo }: AppLayoutPro
       </div>
 
       {/* Verify OTP Modal */}
-      <Dialog open={showVerifyModal} onOpenChange={setShowVerifyModal}>
+      <Dialog open={showVerifyModal} onOpenChange={(open) => { setShowVerifyModal(open); if (!open) { setOtpValue(''); setVerifyError(''); } }}>
         <DialogContent className="bg-zinc-900 border-zinc-800 text-slate-100 max-w-sm">
             <DialogHeader>
               <DialogTitle className="text-xl font-bold text-zinc-100 flex items-center space-x-2">
@@ -295,7 +319,7 @@ export function AppLayout({ children, activeRepoId, onSelectRepo }: AppLayoutPro
             </DialogHeader>
 
             <div className="my-6 space-y-4">
-              <OtpInput onComplete={handleVerifyOtp} disabled={verifying} />
+              <OtpInput ref={otpRef} onChange={setOtpValue} disabled={verifying} />
               {verifying && (
                 <div className="flex items-center justify-center gap-2 text-zinc-400 text-sm">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -316,6 +340,14 @@ export function AppLayout({ children, activeRepoId, onSelectRepo }: AppLayoutPro
                 className="text-zinc-400 hover:text-white hover:bg-zinc-800"
               >
                 {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : resending ? 'Sending…' : 'Resend Code'}
+              </Button>
+              <Button
+                type="button"
+                onClick={handleVerifyOtp}
+                disabled={verifying || otpValue.length !== 6}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white"
+              >
+                {verifying ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Verifying…</> : 'Verify'}
               </Button>
             </DialogFooter>
         </DialogContent>
