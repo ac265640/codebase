@@ -1,9 +1,11 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import passport from 'passport';
 import { User, IUser } from '../models/User';
 import { setTokenCookies, clearTokenCookies, verifyRefreshToken, signAccessToken, signRefreshToken } from '../utils/tokens';
 import { authenticate } from '../middleware/authenticate';
+import { sendOtpEmail, sendPasswordResetEmail } from '../services/emailService';
 
 export const authRouter = Router();
 
@@ -154,10 +156,6 @@ authRouter.get('/me', authenticate, (req: Request, res: Response) => {
     googleId: u.googleId
   });
 });
-
-import passport from 'passport';
-import { sendOtpEmail, sendPasswordResetEmail } from '../services/emailService';
-
 // GET /api/auth/google
 authRouter.get('/google',
   passport.authenticate('google', {
