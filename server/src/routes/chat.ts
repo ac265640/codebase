@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/authenticate';
+import { requireEmailVerified } from '../middleware/requireEmailVerified';
+import { usageLimitQuery } from '../middleware/usageLimit';
 import { trackUsage } from '../middleware/trackUsage';
 import { Repository } from '../models/Repository';
 import { ChatSession } from '../models/ChatSession';
@@ -9,7 +11,7 @@ export const chatRouter = Router();
 chatRouter.use(authenticate);
 
 // POST /api/chat/:repoId — send a message, get RAG answer
-chatRouter.post('/:repoId', trackUsage(150), async (req: Request, res: Response) => {
+chatRouter.post('/:repoId', requireEmailVerified, usageLimitQuery, trackUsage(150), async (req: Request, res: Response) => {
   try {
     const { question } = req.body;
     if (!question?.trim()) {
@@ -40,8 +42,10 @@ chatRouter.post('/:repoId', trackUsage(150), async (req: Request, res: Response)
     );
 
     res.json({ answer, sources, provider, sessionId: session._id });
-  } catch (err) {
-    res.status(500).json({ error: String(err) });
+  } catch (err: any) {
+    const status = err?.status === 503 ? 503 : 500;
+    const message = status === 503 ? 'AI service temporarily unavailable' : String(err);
+    res.status(status).json({ error: message });
   }
 });
 

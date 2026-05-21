@@ -32,10 +32,15 @@ import { billingRouter } from './routes/billing';
 
 app.use(morgan('dev'));
 
-// Stripe webhook must be mounted BEFORE express.json()
-app.post('/api/billing/webhook', billingRouter);
+// Conditionally parse JSON to bypass express.json() for Stripe webhook raw body verification
+app.use((req, res, next) => {
+  if (req.originalUrl === '/api/billing/webhook') {
+    next();
+  } else {
+    express.json()(req, res, next);
+  }
+});
 
-app.use(express.json());
 app.use(cookieParser());
 
 import passport from './config/passport';
@@ -49,10 +54,13 @@ app.use(rateLimit({
   legacyHeaders: false,
 }));
 
-// Chat-specific rate limit — 10 per minute (LLM calls are expensive)
-app.use('/api/chat', rateLimit({
-  windowMs: 60 * 1000,
-  max: 10,
+// Forgot-password rate limit — max 3 reset requests per IP per hour
+app.use('/api/auth/forgot-password', rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  message: { error: 'Too many reset requests. Please wait before trying again.' },
+  standardHeaders: true,
+  legacyHeaders: false,
 }));
 
 app.use('/api/auth', authRouter);
@@ -68,6 +76,11 @@ import { apiKeyRouter } from './routes/apiKeys';
 app.use('/api/keys', apiKeyRouter);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+
+// 404 handler for unknown routes
+app.use((_req, res) => {
+  res.status(404).json({ error: 'Route not found' });
+});
 
 // Global error handler
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

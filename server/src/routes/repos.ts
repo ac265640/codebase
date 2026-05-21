@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/authenticate';
+import { requireEmailVerified } from '../middleware/requireEmailVerified';
+import { usageLimitRepos } from '../middleware/usageLimit';
 import { Repository } from '../models/Repository';
 import { cloneRepo, deleteRepo } from '../services/gitService';
 import { getEmbeddableFiles, buildFileTree, getFileContent } from '../services/fileService';
@@ -22,7 +24,7 @@ reposRouter.get('/', async (req: Request, res: Response) => {
 });
 
 // POST /api/repos — clone + embed a new repo
-reposRouter.post('/', async (req: Request, res: Response) => {
+reposRouter.post('/', requireEmailVerified, usageLimitRepos, async (req: Request, res: Response) => {
   try {
     const { repoUrl } = req.body;
     if (!repoUrl) {

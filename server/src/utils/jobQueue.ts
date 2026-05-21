@@ -16,5 +16,12 @@ export const embedQueue = new Queue<EmbedJobData>('embedQueue', {
 
 export function enqueue(id: string, data: EmbedJobData) {
   // Use the ID as the jobId to prevent duplicates if desired
-  embedQueue.add('embedRepo', data, { jobId: id });
+  embedQueue.add('embedRepo', data, {
+    jobId: id,
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 2000,
+    },
+  });
 }

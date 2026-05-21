@@ -3,7 +3,7 @@ import { getCollectionName } from './embedService';
 import fs from 'fs';
 import path from 'path';
 import { getRepoPath } from './gitService';
-import { LocalVectorStore } from './localVectorStore';
+import { ChromaStore } from './chromaStore';
 
 let _cohere: CohereClient | null = null;
 
@@ -37,8 +37,8 @@ export async function query(
 
   const queryEmbedding = (qEmbed.embeddings as number[][])[0];
 
-  // 2. Retrieve top-5 relevant chunks
-  const collection = new LocalVectorStore(collectionName);
+  // 2. Retrieve top-5 relevant chunks from ChromaDB
+  const collection = new ChromaStore(collectionName);
   const count = await collection.count();
   if (count === 0) {
     throw new Error('Repository not embedded yet. Please embed it first.');
@@ -49,8 +49,8 @@ export async function query(
     nResults: 5,
   });
 
-  const chunks = results.documents[0] ?? [];
-  const metas = results.metadatas[0] ?? [];
+  const chunks = (results.documents[0] ?? []) as string[];
+  const metas = (results.metadatas[0] ?? []) as Array<{ file: string } | null>;
 
   // 3. Fallback: if no chunks retrieved, use README
   let context = chunks.join('\n\n---\n\n');
@@ -78,7 +78,13 @@ QUESTION: ${question}
 ANSWER:`;
 
   // 5. Generate answer using Multi-LLM provider
-  const chatResponse = await generateChatResponse(prompt);
+  let chatResponse: { answer: string; provider: string };
+  try {
+    chatResponse = await generateChatResponse(prompt);
+  } catch (llmErr) {
+    console.error('LLM provider error:', llmErr);
+    throw Object.assign(new Error('AI service temporarily unavailable'), { status: 503 });
+  }
 
   // 6. Build source citations
   const sources = metas

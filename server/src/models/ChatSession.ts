@@ -33,4 +33,6 @@ const ChatSessionSchema = new Schema<IChatSession>({
   messages: [MessageSchema],
 }, { timestamps: true });
 
+ChatSessionSchema.index({ userId: 1, repoId: 1 });
+
 export const ChatSession = mongoose.model<IChatSession>('ChatSession', ChatSessionSchema);

@@ -6,6 +6,8 @@ interface AuthUser {
   email: string;
   displayName: string;
   avatar?: string;
+  isEmailVerified?: boolean;
+  googleId?: string;
 }
 
 interface AuthState {
@@ -23,6 +25,6 @@ export const useAuthStore = create<AuthState>()(
       setUser: user => set({ user, isAuthenticated: true }),
       clearUser: () => set({ user: null, isAuthenticated: false }),
     }),
-    { name: 'codexai-auth' }
+    { name: 'codebase-auth' }
   )
 );

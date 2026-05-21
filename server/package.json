@@ -12,6 +12,7 @@
     "@google/generative-ai": "^0.24.1",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.76.10",
+    "chromadb": "^3.4.3",
     "cohere-ai": "^7.10.0",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",

@@ -42,9 +42,14 @@ export async function getEmbeddableFiles(userId: string, repoSlug: string): Prom
         // Extract only code cells from Jupyter notebooks — raw JSON is noise
         const raw = fs.readFileSync(fullPath, 'utf-8');
         const notebook = JSON.parse(raw);
-        content = notebook.cells
-          .filter((cell: { cell_type: string }) => cell.cell_type === 'code')
-          .map((cell: { source: string[] }) => cell.source.join(''))
+        const cells: any[] = Array.isArray(notebook.cells) ? notebook.cells : [];
+        content = cells
+          .filter((cell: any) => cell?.cell_type === 'code')
+          .map((cell: any) => {
+            // source can be a string or an array of strings
+            if (Array.isArray(cell.source)) return cell.source.join('');
+            return typeof cell.source === 'string' ? cell.source : '';
+          })
           .join('\n\n');
       } else {
         content = fs.readFileSync(fullPath, 'utf-8');

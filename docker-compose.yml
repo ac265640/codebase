@@ -6,46 +6,53 @@ services:
       context: ./server
     ports:
       - "5001:5001"
+    env_file:
+      - ./server/.env
     environment:
-      - PORT=5001
-      - MONGODB_URI=mongodb://mongo:27017/codexai
+      - CHROMA_URL=http://chroma:8000
       - REDIS_URL=redis://redis:6379
-      - JWT_SECRET=development_secret_key
-      - JWT_REFRESH_SECRET=development_refresh_secret
-      - CLIENT_URL=http://localhost:8080
-      - CHROMA_PERSIST_PATH=/app/chroma_db
-      - REPOS_DIR=/app/repos
+      - MONGODB_URI=mongodb://mongodb:27017/codexai
     volumes:
+      - ./server:/app
       - chroma_data:/app/chroma_db
       - repos_data:/app/repos
     depends_on:
-      - mongo
       - redis
+      - chroma
+      - mongodb
 
   client:
     build:
       context: ./client
     ports:
-      - "8080:80"
+      - "3000:80"
     depends_on:
       - server
 
-  mongo:
-    image: mongo:latest
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-
   redis:
-    image: redis:alpine
+    image: redis:7-alpine
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
 
+  chroma:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+
+  mongodb:
+    image: mongo:6.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+
 volumes:
-  mongo_data:
   redis_data:
   chroma_data:
   repos_data:
+  mongodb_data:
+

@@ -19,6 +19,9 @@ server/chroma_db/
 backend/chroma/
 repos/
 
+# Nested repos / tool configs
+claude-token-efficient/
+
 # OS
 .DS_Store
 Thumbs.db

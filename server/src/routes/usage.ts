@@ -1,41 +1,43 @@
 import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/authenticate';
 import { UsageLog } from '../models/UsageLog';
-import { Subscription } from '../models/Subscription';
 
 export const usageRouter = Router();
+usageRouter.use(authenticate);
 
-// GET /api/usage/stats
-usageRouter.get('/stats', authenticate, async (req: Request, res: Response) => {
+const FREE_LIMITS = { queriesPerDay: 30, totalRepos: 3 };
+const PRO_LIMITS  = { queriesPerDay: Infinity, totalRepos: Infinity };
+
+// GET /api/usage/today — today's usage stats
+usageRouter.get('/today', async (req: Request, res: Response) => {
   try {
     const today = new Date().toISOString().split('T')[0];
-    
-    // Get usage for today
-    const logs = await UsageLog.find({ userId: req.user._id, date: today });
-    const totalTokensToday = logs.reduce((acc, log) => acc + (log.tokensUsed || 0), 0);
-    const requestsToday = logs.length;
-
-    // Get subscription limits
-    const sub = await Subscription.findOne({ userId: req.user._id });
-    const plan = sub?.planId || 'free';
-    
-    // Define dummy limits
-    const limits = {
-      free: { requests: 50, tokens: 50000 },
-      pro: { requests: 1000, tokens: 5000000 },
-    };
+    const log = await UsageLog.findOne({ userId: req.user._id, date: today });
+    const plan = req.user.plan || 'free';
+    const limits = plan === 'pro' ? PRO_LIMITS : FREE_LIMITS;
 
     res.json({
+      date: today,
       plan,
-      usage: {
-        today: {
-          requests: requestsToday,
-          tokens: totalTokensToday,
-        }
-      },
-      limits: limits[plan as 'free' | 'pro'],
+      queryCount: log?.queryCount ?? 0,
+      reposCloned: log?.reposCloned ?? 0,
+      limits,
     });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
 });
+
+// GET /api/usage/history — last 30 days of logs
+usageRouter.get('/history', async (req: Request, res: Response) => {
+  try {
+    const logs = await UsageLog.find({ userId: req.user._id })
+      .sort({ date: -1 })
+      .limit(30)
+      .lean();
+    res.json(logs);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+

@@ -39,6 +39,15 @@ export function setTokenCookies(res: import('express').Response, userId: string)
 }
 
 export function clearTokenCookies(res: import('express').Response) {
-  res.clearCookie('access_token');
-  res.clearCookie('refresh_token');
+  const isProd = process.env.NODE_ENV === 'production';
+  res.clearCookie('access_token', {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
+  });
+  res.clearCookie('refresh_token', {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
+  });
 }

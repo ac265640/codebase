@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import Stripe from 'stripe';
 import { authenticate } from '../middleware/authenticate';
 import { Subscription } from '../models/Subscription';
+import { User } from '../models/User';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_dummy', {
   apiVersion: '2026-04-22.dahlia' as any,
@@ -96,19 +97,35 @@ billingRouter.post(
               },
               { upsert: true }
             );
+
+            // Sync with User model
+            await User.findByIdAndUpdate(userId, {
+              plan: 'pro',
+              stripeCustomerId: session.customer as string,
+              stripeSubscriptionId: session.subscription as string,
+            });
           }
           break;
         }
         case 'customer.subscription.updated':
         case 'customer.subscription.deleted': {
           const subscription = event.data.object as any;
-          await Subscription.findOneAndUpdate(
+          const isDeleted = event.type === 'customer.subscription.deleted' || subscription.status !== 'active';
+          const updatedSub = await Subscription.findOneAndUpdate(
             { stripeSubscriptionId: subscription.id },
             {
               status: subscription.status,
               currentPeriodEnd: new Date(subscription.current_period_end * 1000),
-            }
+              planId: isDeleted ? 'free' : 'pro',
+            },
+            { new: true }
           );
+
+          if (updatedSub && updatedSub.userId) {
+            await User.findByIdAndUpdate(updatedSub.userId, {
+              plan: isDeleted ? 'free' : 'pro',
+            });
+          }
           break;
         }
       }

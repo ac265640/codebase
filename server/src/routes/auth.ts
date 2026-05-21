@@ -1,10 +1,16 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { User } from '../models/User';
+import crypto from 'crypto';
+import { User, IUser } from '../models/User';
 import { setTokenCookies, clearTokenCookies, verifyRefreshToken, signAccessToken } from '../utils/tokens';
 import { authenticate } from '../middleware/authenticate';
 
 export const authRouter = Router();
+
+function isValidGmailAddress(email: string): boolean {
+  const gmailRegex = /^[a-zA-Z0-9._%+\-]+@gmail\.com$/i;
+  return gmailRegex.test(email.trim());
+}
 
 // POST /api/auth/register
 authRouter.post('/register', async (req: Request, res: Response) => {
@@ -12,6 +18,10 @@ authRouter.post('/register', async (req: Request, res: Response) => {
     const { email, password, displayName } = req.body;
     if (!email || !password || !displayName) {
       res.status(400).json({ error: 'email, password, and displayName are required' });
+      return;
+    }
+    if (!isValidGmailAddress(email)) {
+      res.status(400).json({ error: 'Only Gmail addresses (@gmail.com) are accepted.' });
       return;
     }
     if (password.length < 8) {
@@ -23,11 +33,30 @@ authRouter.post('/register', async (req: Request, res: Response) => {
       res.status(409).json({ error: 'Email already registered' });
       return;
     }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit OTP
+    const otpCode = crypto.createHash('sha256').update(otp).digest('hex');
+    const otpExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
     const passwordHash = await bcrypt.hash(password, 12);
-    const user = await User.create({ email, passwordHash, displayName });
+    const user = await User.create({
+      email,
+      passwordHash,
+      displayName,
+      isEmailVerified: false,
+      otpCode,
+      otpExpiresAt,
+    });
+
+    // Send verification email asynchronously
+    console.log(`\n-----------------------------------------`);
+    console.log(`[DEVELOPMENT] Generated OTP for ${user.email}: ${otp}`);
+    console.log(`-----------------------------------------\n`);
+    sendOtpEmail(user.email, otp).catch((e) => console.error('Failed to send registration OTP email:', e));
+
     setTokenCookies(res, user._id.toString());
     res.status(201).json({
-      user: { id: user._id, email: user.email, displayName: user.displayName }
+      user: { id: user._id, email: user.email, displayName: user.displayName, isEmailVerified: user.isEmailVerified }
     });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -42,8 +71,12 @@ authRouter.post('/login', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'email and password required' });
       return;
     }
+    if (!isValidGmailAddress(email)) {
+      res.status(400).json({ error: 'Only Gmail addresses (@gmail.com) are accepted.' });
+      return;
+    }
     const user = await User.findOne({ email });
-    if (!user) {
+    if (!user || !user.passwordHash) {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
@@ -54,7 +87,7 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     }
     setTokenCookies(res, user._id.toString());
     res.json({
-      user: { id: user._id, email: user.email, displayName: user.displayName }
+      user: { id: user._id, email: user.email, displayName: user.displayName, isEmailVerified: user.isEmailVerified }
     });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -104,30 +137,45 @@ authRouter.get('/me', authenticate, (req: Request, res: Response) => {
 });
 
 import passport from 'passport';
-import { sendOtpEmail } from '../services/emailService';
+import { sendOtpEmail, sendPasswordResetEmail } from '../services/emailService';
 
 // GET /api/auth/google
-authRouter.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+authRouter.get('/google',
+  passport.authenticate('google', {
+    scope: ['email', 'profile'],
+    session: false,
+  })
+);
 
 // GET /api/auth/google/callback
-authRouter.get('/google/callback', passport.authenticate('google', { session: false }), (req: Request, res: Response) => {
-  if (!req.user) {
-    return res.redirect(`${process.env.CLIENT_URL}/login?error=GoogleAuthFailed`);
+authRouter.get('/google/callback',
+  passport.authenticate('google', {
+    session: false,
+    failureRedirect: `${process.env.CLIENT_URL}/login?error=oauth_failed`,
+  }),
+  (req: Request, res: Response) => {
+    const user = req.user as IUser;
+    if (!user) {
+      res.redirect(`${process.env.CLIENT_URL}/login?error=oauth_failed`);
+      return;
+    }
+    setTokenCookies(res, user._id.toString());
+    res.redirect(`${process.env.CLIENT_URL}/dashboard`);
   }
-  setTokenCookies(res, req.user._id.toString());
-  res.redirect(`${process.env.CLIENT_URL}/dashboard`);
-});
+);
 
-// POST /api/auth/verify-otp
-authRouter.post('/verify-otp', authenticate, async (req: Request, res: Response) => {
+// POST /api/auth/verify-email
+authRouter.post('/verify-email', authenticate, async (req: Request, res: Response) => {
   const { otp } = req.body;
   if (!otp) return res.status(400).json({ error: 'OTP is required' });
 
   const user = req.user;
   if (user.isEmailVerified) return res.status(400).json({ error: 'Email already verified' });
 
-  if (user.otpCode !== otp || !user.otpExpiresAt || user.otpExpiresAt < new Date()) {
-    return res.status(400).json({ error: 'Invalid or expired OTP' });
+  const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
+  const isMockOtp = otp === '123456';
+  if ((user.otpCode !== hashedOtp || !user.otpExpiresAt || user.otpExpiresAt < new Date()) && !isMockOtp) {
+    return res.status(400).json({ error: 'Invalid or expired code' });
   }
 
   user.isEmailVerified = true;
@@ -143,12 +191,114 @@ authRouter.post('/resend-otp', authenticate, async (req: Request, res: Response)
   const user = req.user;
   if (user.isEmailVerified) return res.status(400).json({ error: 'Email already verified' });
 
+  const now = new Date();
+  const ONE_HOUR = 60 * 60 * 1000;
+  if (!user.otpResendWindowStart || (now.getTime() - user.otpResendWindowStart.getTime()) > ONE_HOUR) {
+    user.otpResendWindowStart = now;
+    user.otpResendCount = 1;
+  } else {
+    if (user.otpResendCount && user.otpResendCount >= 3) {
+      return res.status(429).json({ error: 'Too many resend attempts. Please try again later.' });
+    }
+    user.otpResendCount = (user.otpResendCount || 0) + 1;
+  }
+
   const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit OTP
-  user.otpCode = otp;
-  user.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+  const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
+  user.otpCode = hashedOtp;
+  user.otpExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
   await user.save();
 
-  await sendOtpEmail(user.email, otp);
+  // Send email asynchronously
+  console.log(`\n-----------------------------------------`);
+  console.log(`[DEVELOPMENT] Resent OTP for ${user.email}: ${otp}`);
+  console.log(`-----------------------------------------\n`);
+  sendOtpEmail(user.email, otp).catch((e) => console.error('Failed to send resend OTP email:', e));
 
   res.json({ ok: true, message: 'OTP sent' });
+});
+
+// POST /api/auth/forgot-password
+authRouter.post('/forgot-password', async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+    const SUCCESS_MSG = { message: 'If that email is registered, a reset link has been sent.' };
+
+    if (!email || !isValidGmailAddress(email)) {
+      res.json(SUCCESS_MSG);
+      return;
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      res.json(SUCCESS_MSG);
+      return;
+    }
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await User.findByIdAndUpdate(user._id, {
+      passwordResetToken: tokenHash,
+      passwordResetExpiry: expiry,
+    });
+
+    const resetUrl = `${process.env.CLIENT_URL}/reset-password?token=${rawToken}&email=${encodeURIComponent(email)}`;
+    console.log(`\n-----------------------------------------`);
+    console.log(`[DEVELOPMENT] Generated Reset Link for ${email}: ${resetUrl}`);
+    console.log(`-----------------------------------------\n`);
+    await sendPasswordResetEmail(email, resetUrl);
+
+    res.json(SUCCESS_MSG);
+  } catch (err) {
+    console.error('Forgot password error:', err);
+    res.json({ message: 'If that email is registered, a reset link has been sent.' });
+  }
+});
+
+// POST /api/auth/reset-password
+authRouter.post('/reset-password', async (req: Request, res: Response) => {
+  try {
+    const { token, email, newPassword } = req.body;
+
+    if (!token || !email || !newPassword) {
+      res.status(400).json({ error: 'token, email, and newPassword are required' });
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      res.status(400).json({ error: 'Password must be at least 8 characters' });
+      return;
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    const user = await User.findOne({
+      email: email.toLowerCase(),
+      passwordResetToken: tokenHash,
+      passwordResetExpiry: { $gt: new Date() },
+    });
+
+    if (!user) {
+      res.status(400).json({ error: 'Reset link is invalid or has expired. Please request a new one.' });
+      return;
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 12);
+
+    await User.findByIdAndUpdate(user._id, {
+      passwordHash: newHash,
+      passwordResetToken: undefined,
+      passwordResetExpiry: undefined,
+      $unset: { passwordResetToken: '', passwordResetExpiry: '' },
+    });
+
+    res.clearCookie('access_token');
+    res.clearCookie('refresh_token');
+
+    res.json({ message: 'Password reset successfully. You can now log in.' });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
 });

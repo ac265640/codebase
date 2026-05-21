@@ -1,6 +1,6 @@
 import { CohereClient } from 'cohere-ai';
 import { ParsedFile } from './fileService';
-import { LocalVectorStore, deleteCollectionFile } from './localVectorStore';
+import { ChromaStore, deleteChromaCollection } from './chromaStore';
 
 const BATCH_SIZE = 96; // Cohere embed API limit
 
@@ -27,9 +27,9 @@ export async function embedFiles(
   const collectionName = getCollectionName(userId, repoSlug);
 
   // Delete existing collection if re-embedding
-  deleteCollectionFile(collectionName);
-  
-  const collection = new LocalVectorStore(collectionName);
+  await deleteChromaCollection(collectionName);
+
+  const collection = new ChromaStore(collectionName);
   let embedded = 0;
 
   for (let i = 0; i < files.length; i += BATCH_SIZE) {
@@ -60,5 +60,5 @@ export async function embedFiles(
 }
 
 export async function deleteCollection(userId: string, repoSlug: string): Promise<void> {
-  deleteCollectionFile(getCollectionName(userId, repoSlug));
+  await deleteChromaCollection(getCollectionName(userId, repoSlug));
 }
