@@ -14,8 +14,13 @@ function getTransporter(): nodemailer.Transporter {
   }
 
   transporter = nodemailer.createTransport({
-    service: 'gmail',         // uses Gmail's SMTP settings automatically
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false, // true for 465, false for 587 (automatically upgrades to STARTTLS)
     auth: { user, pass },
+    connectionTimeout: 10000, // 10 seconds
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
   });
 
   return transporter;
