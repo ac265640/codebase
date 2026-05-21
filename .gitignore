@@ -10,7 +10,7 @@ backend/.env
 server/repos/
 server/chroma_db/
 backend/chroma/
-repos/
+/repos/
 data/
 
 # Build output
