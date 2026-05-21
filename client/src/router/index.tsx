@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import api from '../api/client';
 import Landing from '../pages/Landing';
@@ -10,6 +10,22 @@ import Settings from '../pages/Settings';
 
 import AuthCallback from '../pages/AuthCallback';
 import GuestRepoPage from '../pages/GuestRepoPage';
+import { initGA, trackPageView, trackLoginSuccess } from '../utils/analytics';
+
+// Global route tracker to feed path changes directly to GA4 on SPA route transitions
+function GA4RouteTracker() {
+  const location = useLocation();
+
+  useEffect(() => {
+    initGA();
+  }, []);
+
+  useEffect(() => {
+    trackPageView(location.pathname + location.search);
+  }, [location]);
+
+  return null;
+}
 
 function Protected({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated);
@@ -39,6 +55,10 @@ function AuthHydration({ children }: { children: React.ReactNode }) {
       .then(res => {
         // Save the authenticated user and tokens to our persistent Zustand store
         useAuthStore.getState().setUser(res.data, urlAccess, urlRefresh);
+        
+        // Track successful Google OAuth login success
+        trackLoginSuccess('google');
+
         // Instant URL clean up
         window.history.replaceState({}, document.title, window.location.pathname);
       })
@@ -76,6 +96,7 @@ function AuthHydration({ children }: { children: React.ReactNode }) {
 export function AppRouter() {
   return (
     <BrowserRouter>
+      <GA4RouteTracker />
       <AuthHydration>
         <Routes>
           <Route path="/" element={<Landing />} />
@@ -92,3 +113,4 @@ export function AppRouter() {
     </BrowserRouter>
   );
 }
+

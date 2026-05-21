@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/componen
 import { useAuthStore } from '../store/authStore';
 import api from '../api/client';
 import LightRays from '@/components/ui/LightRays';
+import { trackSignupSuccess } from '../utils/analytics';
 
 export default function Register() {
   const [email, setEmail] = useState('');
@@ -32,6 +33,10 @@ export default function Register() {
     try {
       const res = await api.post('/auth/register', { email, password, displayName });
       setUser(res.data.user, res.data.accessToken, res.data.refreshToken);
+
+      // Track successful account registration event
+      trackSignupSuccess('credentials');
+
       navigate('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Registration failed. Please try again.');
@@ -39,6 +44,7 @@ export default function Register() {
       setLoading(false);
     }
   };
+
 
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4 relative overflow-hidden">

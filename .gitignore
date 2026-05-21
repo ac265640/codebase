@@ -1,45 +1,34 @@
-# Environment
+# System and Environment
+.DS_Store
+Thumbs.db
 .env
 .env.local
 .env.production
-server/.env
-client/.env
-backend/.env
-
-# Runtime data (never commit these)
-server/repos/
-server/chroma_db/
-backend/repos/
-backend/chroma/
-/repos/
-data/
-
-# Build output
-dist/
-build/
-client/dist/
-
-# Dependencies
-node_modules/
-server/node_modules/
-client/node_modules/
-
-# Python artifacts
-__pycache__/
-*.pyc
-venv/
-.venv/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
 *.log
 npm-debug.log*
 
-# TypeScript
+# Active Packages Envs
+client/.env
+server/.env
+
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Build outputs
+dist/
+build/
+client/dist/
+server/dist/
 *.tsbuildinfo
 
-# Tooling / nested repos
+# Local Runtime Databases & Cloned Repositories
+/repos/
+/data/
+server/repos/
+server/chroma_db/
+chroma_db/
+
+# Tooling / Local profiles
 claude-token-efficient/

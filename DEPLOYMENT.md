@@ -103,6 +103,7 @@ Optional (for full feature set):
    |-----|-------|
    | VITE_API_URL | https://codexai-server.onrender.com |
    | VITE_SOCKET_URL | https://codexai-server.onrender.com |
+   | VITE_GA_MEASUREMENT_ID | G-XXXXXXXXXX ← your GA4 Measurement ID (optional but recommended) |
 
 5. Click "Deploy" → wait 1–2 minutes
 6. Copy your Vercel URL: `https://codexai-xxxx.vercel.app`

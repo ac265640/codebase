@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/componen
 import { useAuthStore } from '../store/authStore';
 import api from '../api/client';
 import LightRays from '@/components/ui/LightRays';
+import { trackLoginSuccess } from '../utils/analytics';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -34,6 +35,10 @@ export default function Login() {
     try {
       const res = await api.post('/auth/login', { email, password });
       setUser(res.data.user, res.data.accessToken, res.data.refreshToken);
+      
+      // Track successful credentials login event
+      trackLoginSuccess('credentials');
+
       navigate('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Login failed. Please try again.');
@@ -41,6 +46,7 @@ export default function Login() {
       setLoading(false);
     }
   };
+
 
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4 relative overflow-hidden">
