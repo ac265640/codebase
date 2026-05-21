@@ -1,91 +1,8 @@
-import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
-import { Menu, X, ShieldAlert, Key, Loader2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sidebar } from './Sidebar';
 import { useAuthStore } from '@/store/authStore';
-import api from '@/api/client';
-import { useToast } from '@/components/ui/use-toast';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-
-export interface OtpInputHandle {
-  reset: () => void;
-  getValue: () => string;
-}
-
-// 6-digit OTP input with auto-advance and backspace handling
-const OtpInput = forwardRef<OtpInputHandle, { onChange?: (otp: string) => void; disabled?: boolean }>(function OtpInput({ onChange, disabled }, ref) {
-  const [values, setValues] = useState(['', '', '', '', '', '']);
-  const inputs = useRef<Array<HTMLInputElement | null>>([]);
-
-  useImperativeHandle(ref, () => ({
-    reset: () => {
-      setValues(['', '', '', '', '', '']);
-      setTimeout(() => inputs.current[0]?.focus(), 50);
-    },
-    getValue: () => values.join(''),
-  }));
-
-  function handleChange(idx: number, val: string) {
-    if (!/^\d?$/.test(val)) return;
-    const next = [...values];
-    next[idx] = val;
-    setValues(next);
-    if (val && idx < 5) inputs.current[idx + 1]?.focus();
-    onChange?.(next.join(''));
-  }
-
-  function handleKeyDown(idx: number, e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Backspace' && !values[idx] && idx > 0) {
-      inputs.current[idx - 1]?.focus();
-    }
-  }
-
-  function handlePaste(e: React.ClipboardEvent) {
-    e.preventDefault();
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
-    if (!pasted) return;
-    const next = [...values];
-    pasted.split('').forEach((ch, i) => { next[i] = ch; });
-    setValues(next);
-    const lastFilled = Math.min(pasted.length, 5);
-    inputs.current[lastFilled]?.focus();
-    onChange?.(next.join(''));
-  }
-
-  return (
-    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-      {values.map((v, i) => (
-        <input
-          key={i}
-          ref={el => { inputs.current[i] = el; }}
-          type="text"
-          inputMode="numeric"
-          maxLength={1}
-          value={v}
-          disabled={disabled}
-          onChange={e => handleChange(i, e.target.value)}
-          onKeyDown={e => handleKeyDown(i, e)}
-          onPaste={handlePaste}
-          style={{
-            width: '44px',
-            height: '52px',
-            textAlign: 'center',
-            fontSize: '22px',
-            fontWeight: 'bold',
-            borderRadius: '8px',
-            border: '2px solid #3f3f46',
-            background: '#09090b',
-            color: '#f4f4f5',
-            outline: 'none',
-            transition: 'border-color 0.15s',
-          }}
-          onFocus={e => (e.target.style.borderColor = '#6366f1')}
-          onBlur={e => (e.target.style.borderColor = '#3f3f46')}
-        />
-      ))}
-    </div>
-  );
-});
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -96,18 +13,9 @@ interface AppLayoutProps {
 export function AppLayout({ children, activeRepoId, onSelectRepo }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showWakingBanner, setShowWakingBanner] = useState(false);
-  const { user, setUser } = useAuthStore();
-  const { toast } = useToast();
+  const { user } = useAuthStore();
 
-  const [showVerifyModal, setShowVerifyModal] = useState(false);
-  const [verifying, setVerifying] = useState(false);
-  const [verifyError, setVerifyError] = useState('');
-  const [resending, setResending] = useState(false);
-  const [resendCooldown, setResendCooldown] = useState(0); // seconds remaining
-  const [otpValue, setOtpValue] = useState('');
-  const otpRef = useRef<OtpInputHandle>(null);
-
-  // Resizing sidebar state and hook
+  // Resizing sidebar state
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem('sidebar-width');
     return saved ? parseInt(saved, 10) : 320;
@@ -158,54 +66,6 @@ export function AppLayout({ children, activeRepoId, onSelectRepo }: AppLayoutPro
     window.addEventListener('api-slow', handleSlowApi);
     return () => window.removeEventListener('api-slow', handleSlowApi);
   }, []);
-
-  // Count down the resend cooldown timer
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const timer = setInterval(() => setResendCooldown(c => c - 1), 1000);
-    return () => clearInterval(timer);
-  }, [resendCooldown]);
-
-  const handleResendOtp = async () => {
-    setResending(true);
-    try {
-      await api.post('/auth/resend-otp');
-      setResendCooldown(60);
-      toast({ title: 'Code sent', description: 'A new verification code has been sent to your email.' });
-    } catch (err: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Failed to resend',
-        description: err.response?.data?.error || 'Something went wrong',
-      });
-    } finally {
-      setResending(false);
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    const otp = otpValue;
-    if (otp.length !== 6) {
-      setVerifyError('Please enter the full 6-digit code.');
-      return;
-    }
-    setVerifyError('');
-    setVerifying(true);
-    try {
-      await api.post('/auth/verify-email', { otp });
-      if (user) setUser({ ...user, isEmailVerified: true });
-      setShowVerifyModal(false);
-      setOtpValue('');
-      toast({ title: 'Email Verified', description: 'Your account is now fully verified!' });
-    } catch (err: any) {
-      setVerifyError(err.response?.data?.error || 'Invalid or expired code. Request a new code.');
-      // Reset the OTP input so user can re-enter
-      otpRef.current?.reset();
-      setOtpValue('');
-    } finally {
-      setVerifying(false);
-    }
-  };
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-50 overflow-hidden">
@@ -270,89 +130,10 @@ export function AppLayout({ children, activeRepoId, onSelectRepo }: AppLayoutPro
           </div>
         )}
 
-        {user && !user.isEmailVerified && (
-          <div className="bg-gradient-to-r from-amber-600 to-amber-700 text-white px-4 py-2.5 text-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shrink-0 border-b border-amber-500/20 shadow-md">
-            <div className="flex items-center space-x-2">
-              <ShieldAlert className="h-4 w-4 animate-pulse shrink-0" />
-              <span>
-                <strong className="font-semibold">Verification Required:</strong> Please verify your email to unlock indexing and chat features.
-              </span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={handleResendOtp}
-                disabled={resending}
-                className="text-white hover:bg-amber-700/50 hover:text-white h-8 text-xs font-medium"
-              >
-                {resending ? 'Sending...' : 'Resend Code'}
-              </Button>
-              <Button 
-                variant="secondary" 
-                size="sm" 
-                onClick={() => setShowVerifyModal(true)}
-                className="bg-white hover:bg-amber-50 text-amber-950 h-8 text-xs font-semibold px-4 rounded-lg shadow-sm"
-              >
-                Verify Now
-              </Button>
-            </div>
-          </div>
-        )}
-
         <main className="flex-1 overflow-hidden relative">
           {children}
         </main>
       </div>
-
-      {/* Verify OTP Modal */}
-      <Dialog open={showVerifyModal} onOpenChange={(open) => { setShowVerifyModal(open); if (!open) { setOtpValue(''); setVerifyError(''); } }}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 text-slate-100 max-w-sm">
-            <DialogHeader>
-              <DialogTitle className="text-xl font-bold text-zinc-100 flex items-center space-x-2">
-                <Key className="h-5 w-5 text-amber-500" />
-                <span>Verify Your Account</span>
-              </DialogTitle>
-              <DialogDescription className="text-zinc-400 pt-2">
-                Enter the 6-digit verification code sent to <span className="text-zinc-200 font-semibold">{user?.email}</span>.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="my-6 space-y-4">
-              <OtpInput ref={otpRef} onChange={setOtpValue} disabled={verifying} />
-              {verifying && (
-                <div className="flex items-center justify-center gap-2 text-zinc-400 text-sm">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Verifying…</span>
-                </div>
-              )}
-              {verifyError && (
-                <p className="text-red-400 text-sm text-center">{verifyError}</p>
-              )}
-            </div>
-
-            <DialogFooter className="flex flex-col sm:flex-row gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={handleResendOtp}
-                disabled={resending || resendCooldown > 0}
-                className="text-zinc-400 hover:text-white hover:bg-zinc-800"
-              >
-                {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : resending ? 'Sending…' : 'Resend Code'}
-              </Button>
-              <Button
-                type="button"
-                onClick={handleVerifyOtp}
-                disabled={verifying || otpValue.length !== 6}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white"
-              >
-                {verifying ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Verifying…</> : 'Verify'}
-              </Button>
-            </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
-

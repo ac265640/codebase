@@ -6,7 +6,7 @@ let transporter: nodemailer.Transporter | null = null;
 
 function createTransporter(): nodemailer.Transporter {
   const isGmail = process.env.SMTP_HOST === undefined ||
-                  process.env.SMTP_HOST?.includes('gmail');
+    process.env.SMTP_HOST?.includes('gmail');
 
   if (isGmail) {
     const user = process.env.SMTP_USER;

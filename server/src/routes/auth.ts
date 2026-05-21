@@ -5,8 +5,7 @@ import passport from 'passport';
 import { User, IUser } from '../models/User';
 import { setTokenCookies, clearTokenCookies, verifyRefreshToken, signAccessToken, signRefreshToken } from '../utils/tokens';
 import { authenticate } from '../middleware/authenticate';
-import { sendOtpEmail, sendPasswordResetEmail } from '../services/emailService';
-import { generateOtp, saveOtp, verifyOtp } from '../utils/otp';
+import { sendPasswordResetEmail } from '../services/emailService';
 
 export const authRouter = Router();
 
@@ -47,7 +46,7 @@ authRouter.post('/register', async (req: Request, res: Response) => {
       const updatedUser = await User.findByIdAndUpdate(exists._id, {
         passwordHash: hash,
         displayName: displayName.trim(),
-        isEmailVerified: false, // require OTP verification for password path
+        isEmailVerified: true, // auto-verified
       }, { new: true });
 
       if (!updatedUser) {
@@ -55,24 +54,14 @@ authRouter.post('/register', async (req: Request, res: Response) => {
         return;
       }
 
-      const otp = generateOtp();
-      await saveOtp(updatedUser._id.toString(), otp);
-
-      console.log(`\n-----------------------------------------`);
-      console.log(`[DEVELOPMENT] Generated OTP for merged account ${updatedUser.email}: ${otp}`);
-      console.log(`-----------------------------------------\n`);
-      sendOtpEmail(updatedUser.email, otp).catch(err =>
-        console.error('[OTP] Email send failed:', err)
-      );
-
       const access = signAccessToken(updatedUser._id.toString());
       const refresh = signRefreshToken(updatedUser._id.toString());
       setTokenCookies(res, updatedUser._id.toString());
       res.status(201).json({
-        user: { id: updatedUser._id, email: updatedUser.email, displayName: updatedUser.displayName, isEmailVerified: false },
+        user: { id: updatedUser._id, email: updatedUser.email, displayName: updatedUser.displayName, isEmailVerified: true },
         accessToken: access,
         refreshToken: refresh,
-        message: 'Account updated. Please verify your email.',
+        message: 'Account updated. You can now log in.',
       });
       return;
     }
@@ -82,23 +71,14 @@ authRouter.post('/register', async (req: Request, res: Response) => {
       email: normalizedEmail,
       passwordHash,
       displayName: displayName.trim(),
-      isEmailVerified: false,
+      isEmailVerified: true, // no OTP — auto-verified on registration
     });
-
-    const otp = generateOtp();
-    await saveOtp(user._id.toString(), otp);
-
-    // Send verification email asynchronously
-    console.log(`\n-----------------------------------------`);
-    console.log(`[DEVELOPMENT] Generated OTP for ${user.email}: ${otp}`);
-    console.log(`-----------------------------------------\n`);
-    sendOtpEmail(user.email, otp).catch((e) => console.error('Failed to send registration OTP email:', e));
 
     const access = signAccessToken(user._id.toString());
     const refresh = signRefreshToken(user._id.toString());
     setTokenCookies(res, user._id.toString());
     res.status(201).json({
-      user: { id: user._id, email: user.email, displayName: user.displayName, isEmailVerified: user.isEmailVerified },
+      user: { id: user._id, email: user.email, displayName: user.displayName, isEmailVerified: true },
       accessToken: access,
       refreshToken: refresh,
     });
@@ -194,6 +174,7 @@ authRouter.get('/me', authenticate, (req: Request, res: Response) => {
     googleId: u.googleId
   });
 });
+
 // GET /api/auth/google
 authRouter.get('/google',
   passport.authenticate('google', {
@@ -219,61 +200,6 @@ authRouter.get(['/google/callback', '/google/call'],
     res.redirect(`${process.env.CLIENT_URL}/auth/callback?token=${handoffToken}`);
   }
 );
-
-// POST /api/auth/verify-email
-authRouter.post('/verify-email', authenticate, async (req: Request, res: Response) => {
-  const { otp } = req.body;
-  if (!otp) return res.status(400).json({ error: 'OTP is required' });
-
-  const user = req.user;
-  if (user.isEmailVerified) return res.status(400).json({ error: 'Email already verified' });
-
-  const isValid = await verifyOtp(user._id.toString(), otp);
-  if (!isValid) {
-    return res.status(400).json({ error: 'Invalid or expired code' });
-  }
-
-  user.isEmailVerified = true;
-  await user.save();
-
-  res.json({ ok: true, message: 'Email verified successfully' });
-});
-
-// POST /api/auth/resend-otp
-authRouter.post('/resend-otp', authenticate, async (req: Request, res: Response) => {
-  const user = req.user;
-  if (user.isEmailVerified) return res.status(400).json({ error: 'Email already verified' });
-
-  const now = new Date();
-  const ONE_HOUR = 60 * 60 * 1000;
-  if (!user.otpResendWindowStart || (now.getTime() - user.otpResendWindowStart.getTime()) > ONE_HOUR) {
-    user.otpResendWindowStart = now;
-    user.otpResendCount = 1;
-  } else {
-    if (user.otpResendCount && user.otpResendCount >= 3) {
-      return res.status(429).json({ error: 'Too many resend attempts. Please try again later.' });
-    }
-    user.otpResendCount = (user.otpResendCount || 0) + 1;
-  }
-
-  const otp = generateOtp();
-  await saveOtp(user._id.toString(), otp);
-
-  // Send email and catch exact error to diagnose on the client side
-  console.log(`\n-----------------------------------------`);
-  console.log(`[DEVELOPMENT] Resent OTP for ${user.email}: ${otp}`);
-  console.log(`-----------------------------------------\n`);
-  try {
-    await sendOtpEmail(user.email, otp);
-    res.json({ ok: true, message: 'OTP sent' });
-  } catch (e) {
-    console.error('Failed to send resend OTP email:', e);
-    res.status(500).json({
-      error: `Failed to send email: ${(e as Error).message || String(e)}`,
-      details: (e as Error).message || String(e)
-    });
-  }
-});
 
 // POST /api/auth/forgot-password
 authRouter.post('/forgot-password', async (req: Request, res: Response) => {
@@ -303,9 +229,15 @@ authRouter.post('/forgot-password', async (req: Request, res: Response) => {
 
     const resetUrl = `${process.env.CLIENT_URL}/reset-password?token=${rawToken}&email=${encodeURIComponent(email)}`;
     console.log(`\n-----------------------------------------`);
-    console.log(`[DEVELOPMENT] Generated Reset Link for ${email}: ${resetUrl}`);
+    console.log(`[Password Reset] Link for ${email}: ${resetUrl}`);
     console.log(`-----------------------------------------\n`);
-    await sendPasswordResetEmail(email, resetUrl);
+
+    try {
+      await sendPasswordResetEmail(email, resetUrl);
+    } catch (emailErr) {
+      console.error('[Password Reset] Email send failed:', emailErr);
+      // Still return success to prevent email enumeration
+    }
 
     res.json(SUCCESS_MSG);
   } catch (err) {

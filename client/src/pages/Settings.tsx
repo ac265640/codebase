@@ -245,17 +245,10 @@ export default function Settings() {
               <CardDescription className="text-zinc-400">{user?.email}</CardDescription>
               
               <div className="mt-4">
-                {user?.isEmailVerified ? (
-                  <Badge variant="outline" className="bg-green-950/30 text-green-400 border-green-800/50 flex items-center space-x-1 py-1 px-3">
-                    <Shield className="h-3 w-3" />
-                    <span>Verified Account</span>
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="bg-amber-950/30 text-amber-400 border-amber-800/50 flex items-center space-x-1 py-1 px-3">
-                    <Shield className="h-3 w-3" />
-                    <span>Unverified</span>
-                  </Badge>
-                )}
+                <Badge variant="outline" className="bg-indigo-950/30 text-indigo-400 border-indigo-800/50 flex items-center space-x-1 py-1 px-3">
+                  <Shield className="h-3 w-3" />
+                  <span>Active Account</span>
+                </Badge>
               </div>
             </CardHeader>
             <CardContent>
