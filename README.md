@@ -4,8 +4,11 @@
 [![Database](https://img.shields.io/badge/Database-MongoDB%20%7C%20Redis-green.svg?style=for-the-badge&logo=mongodb)](https://mongodb.com)
 [![AI Engine](https://img.shields.io/badge/AI-Cohere%20%7C%20Gemini%201.5-purple.svg?style=for-the-badge&logo=google-gemini)](https://aistudio.google.com)
 [![License](https://img.shields.io/badge/License-MIT-orange.svg?style=for-the-badge&logo=open-source-initiative)](https://opensource.org/licenses/MIT)
+[![Live](https://img.shields.io/badge/Live-codebase--pink--two.vercel.app-brightgreen.svg?style=for-the-badge&logo=vercel)](https://codebase-pink-two.vercel.app)
 
 **CodeBase is a premium, enterprise-grade developer platform** designed to ingest, parse, index, and query any public GitHub repository. Built around an intelligent semantic RAG (Retrieval-Augmented Generation) pipeline, it enables developers to converse with any codebase using natural language, providing granular answers with direct file-level source citations and an interactive repository file tree browser.
+
+> 🌐 **Live Platform**: [https://codebase-pink-two.vercel.app](https://codebase-pink-two.vercel.app)
 
 ---
 
@@ -73,7 +76,7 @@ codebase/
 ├── server/                     ← Express Backend (Render Ready)
 │   ├── src/
 │   │   ├── config/             ← Database, Passport OAuth, and Redis configs
-│   │   ├── middleware/         ← CORS, Auth shields, email-OTP & rate limiters
+│   │   ├── middleware/          ← CORS, Auth shields, email-OTP & rate limiters
 │   │   ├── models/             ← Mongoose models (User, Repo, Subscription, Chat)
 │   │   ├── routes/             ← REST controller endpoints grouped by resource
 │   │   ├── services/           ← RAG, Cohere/Gemini LLM, Git, and Vector stores
