@@ -227,13 +227,20 @@ authRouter.post('/resend-otp', authenticate, async (req: Request, res: Response)
   user.otpExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
   await user.save();
 
-  // Send email asynchronously
+  // Send email and catch exact error to diagnose on the client side
   console.log(`\n-----------------------------------------`);
   console.log(`[DEVELOPMENT] Resent OTP for ${user.email}: ${otp}`);
   console.log(`-----------------------------------------\n`);
-  sendOtpEmail(user.email, otp).catch((e) => console.error('Failed to send resend OTP email:', e));
-
-  res.json({ ok: true, message: 'OTP sent' });
+  try {
+    await sendOtpEmail(user.email, otp);
+    res.json({ ok: true, message: 'OTP sent' });
+  } catch (e) {
+    console.error('Failed to send resend OTP email:', e);
+    res.status(500).json({
+      error: 'Failed to send verification email. Please check server logs.',
+      details: (e as Error).message || String(e)
+    });
+  }
 });
 
 // POST /api/auth/forgot-password
