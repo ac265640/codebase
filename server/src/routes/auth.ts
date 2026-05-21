@@ -6,6 +6,7 @@ import { User, IUser } from '../models/User';
 import { setTokenCookies, clearTokenCookies, verifyRefreshToken, signAccessToken, signRefreshToken } from '../utils/tokens';
 import { authenticate } from '../middleware/authenticate';
 import { sendOtpEmail, sendPasswordResetEmail } from '../services/emailService';
+import { generateOtp, saveOtp, verifyOtp } from '../utils/otp';
 
 export const authRouter = Router();
 
@@ -30,25 +31,62 @@ authRouter.post('/register', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Password must be at least 8 characters' });
       return;
     }
-    const exists = await User.findOne({ email });
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const exists = await User.findOne({ email: normalizedEmail });
+
     if (exists) {
-      res.status(409).json({ error: 'Email already registered' });
+      // If they have a password already → genuine duplicate
+      if (exists.passwordHash && exists.passwordHash !== 'GOOGLE_AUTH_NO_PASSWORD') {
+        res.status(409).json({ error: 'An account with this email already exists. Please log in.' });
+        return;
+      }
+
+      // If Google-only account → add password to it (account merge)
+      const hash = await bcrypt.hash(password, 12);
+      const updatedUser = await User.findByIdAndUpdate(exists._id, {
+        passwordHash: hash,
+        displayName: displayName.trim(),
+        isEmailVerified: false, // require OTP verification for password path
+      }, { new: true });
+
+      if (!updatedUser) {
+        res.status(500).json({ error: 'Failed to update account.' });
+        return;
+      }
+
+      const otp = generateOtp();
+      await saveOtp(updatedUser._id.toString(), otp);
+
+      console.log(`\n-----------------------------------------`);
+      console.log(`[DEVELOPMENT] Generated OTP for merged account ${updatedUser.email}: ${otp}`);
+      console.log(`-----------------------------------------\n`);
+      sendOtpEmail(updatedUser.email, otp).catch(err =>
+        console.error('[OTP] Email send failed:', err)
+      );
+
+      const access = signAccessToken(updatedUser._id.toString());
+      const refresh = signRefreshToken(updatedUser._id.toString());
+      setTokenCookies(res, updatedUser._id.toString());
+      res.status(201).json({
+        user: { id: updatedUser._id, email: updatedUser.email, displayName: updatedUser.displayName, isEmailVerified: false },
+        accessToken: access,
+        refreshToken: refresh,
+        message: 'Account updated. Please verify your email.',
+      });
       return;
     }
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit OTP
-    const otpCode = crypto.createHash('sha256').update(otp).digest('hex');
-    const otpExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await User.create({
-      email,
+      email: normalizedEmail,
       passwordHash,
-      displayName,
+      displayName: displayName.trim(),
       isEmailVerified: false,
-      otpCode,
-      otpExpiresAt,
     });
+
+    const otp = generateOtp();
+    await saveOtp(user._id.toString(), otp);
 
     // Send verification email asynchronously
     console.log(`\n-----------------------------------------`);
@@ -176,10 +214,9 @@ authRouter.get(['/google/callback', '/google/call'],
       res.redirect(`${process.env.CLIENT_URL}/login?error=oauth_failed`);
       return;
     }
-    const access = signAccessToken(user._id.toString());
-    const refresh = signRefreshToken(user._id.toString());
     setTokenCookies(res, user._id.toString());
-    res.redirect(`${process.env.CLIENT_URL}/dashboard?access_token=${access}&refresh_token=${refresh}`);
+    const handoffToken = signAccessToken(user._id.toString());
+    res.redirect(`${process.env.CLIENT_URL}/auth/callback?token=${handoffToken}`);
   }
 );
 
@@ -191,14 +228,12 @@ authRouter.post('/verify-email', authenticate, async (req: Request, res: Respons
   const user = req.user;
   if (user.isEmailVerified) return res.status(400).json({ error: 'Email already verified' });
 
-  const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
-  if (user.otpCode !== hashedOtp || !user.otpExpiresAt || user.otpExpiresAt < new Date()) {
+  const isValid = await verifyOtp(user._id.toString(), otp);
+  if (!isValid) {
     return res.status(400).json({ error: 'Invalid or expired code' });
   }
 
   user.isEmailVerified = true;
-  user.otpCode = undefined;
-  user.otpExpiresAt = undefined;
   await user.save();
 
   res.json({ ok: true, message: 'Email verified successfully' });
@@ -221,11 +256,8 @@ authRouter.post('/resend-otp', authenticate, async (req: Request, res: Response)
     user.otpResendCount = (user.otpResendCount || 0) + 1;
   }
 
-  const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit OTP
-  const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
-  user.otpCode = hashedOtp;
-  user.otpExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-  await user.save();
+  const otp = generateOtp();
+  await saveOtp(user._id.toString(), otp);
 
   // Send email and catch exact error to diagnose on the client side
   console.log(`\n-----------------------------------------`);

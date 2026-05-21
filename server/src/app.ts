@@ -9,6 +9,7 @@ import { authRouter } from './routes/auth';
 import { reposRouter } from './routes/repos';
 import { chatRouter } from './routes/chat';
 import { userRouter } from './routes/user';
+import { guestRouter } from './routes/guest';
 
 export const app = express();
 
@@ -88,6 +89,7 @@ app.use('/api/repos', reposRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/user', userRouter);
 app.use('/api/billing', billingRouter);
+app.use('/api/guest', guestRouter);
 
 import { usageRouter } from './routes/usage';
 app.use('/api/usage', usageRouter);

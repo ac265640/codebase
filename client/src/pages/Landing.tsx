@@ -1,7 +1,91 @@
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import LightRays from '@/components/ui/LightRays';
 import { Terminal, Search, Database, FileCode, Sparkles } from 'lucide-react';
+import { useGuestStore } from '../store/guestStore';
+import api from '../api/client';
+
+function GuestTrySection() {
+  const [repoUrl, setRepoUrl] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const { canAddRepo, addRepo, repos } = useGuestStore();
+  const navigate = useNavigate();
+
+  async function handleTry() {
+    setError('');
+    if (!repoUrl.startsWith('https://github.com/')) {
+      setError('Please enter a valid GitHub repository URL.');
+      return;
+    }
+    if (!canAddRepo()) {
+      setError('Guest limit reached (2 repos). Sign up for unlimited access.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await api.post('/guest/repos', { repoUrl });
+      addRepo({
+        repoSlug: res.data.repoSlug,
+        repoName: res.data.repoName,
+        repoUrl,
+        fileCount: res.data.fileCount,
+      });
+      navigate(`/guest/${res.data.repoSlug}`);
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Failed to load repo. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="mt-8 text-center w-full max-w-lg mx-auto">
+      <p className="text-zinc-400 text-sm mb-3 font-light">
+        Or try without signing up — no account needed
+      </p>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <input
+          type="text"
+          placeholder="https://github.com/username/repo"
+          value={repoUrl}
+          onChange={e => setRepoUrl(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleTry()}
+          className="flex-1 px-4 py-2.5 rounded-full bg-zinc-900/50 border border-zinc-800/80
+                     text-white placeholder-zinc-500 text-sm focus:outline-none
+                     focus:border-indigo-500 backdrop-blur-md"
+        />
+        <button
+          onClick={handleTry}
+          disabled={loading}
+          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold
+                     rounded-full transition-colors disabled:opacity-50 whitespace-nowrap shadow-lg shadow-indigo-900/20"
+        >
+          {loading ? 'Indexing...' : 'Try Free'}
+        </button>
+      </div>
+      {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
+      
+      {repos.length > 0 && (
+        <div className="mt-6 text-left bg-zinc-900/25 border border-zinc-900/60 p-4 rounded-xl backdrop-blur-md">
+          <p className="text-zinc-500 text-xs mb-2 font-mono uppercase tracking-wider">Your guest repos:</p>
+          <div className="flex flex-wrap gap-2">
+            {repos.map(r => (
+              <a key={r.repoSlug} href={`/guest/${r.repoSlug}`}
+                 className="inline-flex items-center text-xs text-indigo-400
+                            hover:underline bg-zinc-900/60 border border-zinc-800/40 px-3 py-1.5 rounded-full transition-all hover:border-indigo-500/30">
+                <Database className="w-3 h-3 mr-1.5 text-indigo-400" />
+                {r.repoName} ({r.messageCount}/5 messages)
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Landing() {
   return (
@@ -48,6 +132,8 @@ export default function Landing() {
             <Link to="/login">Sign In</Link>
           </Button>
         </div>
+
+        <GuestTrySection />
 
         {/* High-Fidelity Interactive IDE Workspace Mockup */}
         <div className="max-w-4xl w-full mx-auto my-14 bg-zinc-950/60 backdrop-blur-2xl border border-zinc-800/80 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] overflow-hidden text-left relative group transition-all duration-500 hover:border-zinc-700/60">

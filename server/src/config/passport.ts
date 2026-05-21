@@ -12,34 +12,40 @@ passport.use(
     },
     async (_accessToken, _refreshToken, profile, done) => {
       try {
-        const email = profile.emails?.[0].value;
+        const email = profile.emails?.[0]?.value?.toLowerCase();
         if (!email) {
-          return done(new Error('No email found from Google'));
+          return done(new Error('Google did not provide an email address'), false);
         }
 
+        // Case 1: user exists with this googleId → return them
         let user = await User.findOne({ googleId: profile.id });
+        if (user) return done(null, user);
 
-        if (!user) {
-          user = await User.findOne({ email });
-          if (user) {
-            // Link existing account
-            user.googleId = profile.id;
-            user.isEmailVerified = true;
-            await user.save();
-          } else {
-            // Create new account
-            user = await User.create({
-              googleId: profile.id,
-              email,
-              displayName: profile.displayName || email.split('@')[0],
-              avatar: profile.photos?.[0].value,
-              isEmailVerified: true,
-            });
+        // Case 2: user exists with this email (registered via password) → link Google
+        user = await User.findOne({ email });
+        if (user) {
+          user.googleId = profile.id;
+          if (!user.avatar && profile.photos?.[0]?.value) {
+            user.avatar = profile.photos[0].value;
           }
+          user.isEmailVerified = true; // Google accounts are pre-verified
+          await user.save();
+          return done(null, user);
         }
-        return done(null, user);
+
+        // Case 3: brand new user → create
+        const newUser = await User.create({
+          email,
+          googleId: profile.id,
+          displayName: profile.displayName || email.split('@')[0],
+          avatar: profile.photos?.[0]?.value,
+          isEmailVerified: true,
+          // passwordHash intentionally omitted
+        });
+
+        return done(null, newUser);
       } catch (err) {
-        return done(err as Error);
+        return done(err as Error, false);
       }
     }
   )

@@ -9,6 +9,7 @@ backend/.env
 # Runtime data (never commit these)
 server/repos/
 server/chroma_db/
+backend/repos/
 backend/chroma/
 /repos/
 data/

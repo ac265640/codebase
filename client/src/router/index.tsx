@@ -9,6 +9,8 @@ import Dashboard from '../pages/Dashboard';
 import Settings from '../pages/Settings';
 import ForgotPassword from '../pages/ForgotPassword';
 import ResetPassword from '../pages/ResetPassword';
+import AuthCallback from '../pages/AuthCallback';
+import GuestRepoPage from '../pages/GuestRepoPage';
 
 function Protected({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated);
@@ -50,8 +52,8 @@ function AuthHydration({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const anonymousPaths = ['/login', '/register', '/forgot-password', '/reset-password', '/'];
-    if (anonymousPaths.includes(window.location.pathname)) {
+        const anonymousPaths = ['/login', '/register', '/forgot-password', '/reset-password', '/auth/callback', '/'];
+    if (window.location.pathname.startsWith('/guest/') || anonymousPaths.includes(window.location.pathname)) {
       return;
     }
     
@@ -82,6 +84,8 @@ export function AppRouter() {
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/guest/:repoSlug" element={<GuestRepoPage />} />
           <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
           <Route path="/settings" element={<Protected><Settings /></Protected>} />
           <Route path="*" element={<Navigate to="/" />} />

@@ -4,26 +4,47 @@ import https from 'https';
 // Singleton transporter — created once, reused
 let transporter: nodemailer.Transporter | null = null;
 
-function getTransporter(): nodemailer.Transporter {
-  if (transporter) return transporter;
+function createTransporter(): nodemailer.Transporter {
+  const isGmail = process.env.SMTP_HOST === undefined ||
+                  process.env.SMTP_HOST?.includes('gmail');
 
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_APP_PASSWORD; // Gmail App Password, NOT account password
-
-  if (!user || !pass) {
-    throw new Error('SMTP_USER and SMTP_APP_PASSWORD must be set in environment');
+  if (isGmail) {
+    const user = process.env.SMTP_USER;
+    const pass = process.env.SMTP_APP_PASSWORD || process.env.SMTP_PASS;
+    if (!user || !pass) {
+      throw new Error('For Gmail App Password, SMTP_USER and SMTP_APP_PASSWORD (or SMTP_PASS) must be set in environment');
+    }
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user, pass },
+    });
   }
 
-  transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false, // true for 465, false for 587 (automatically upgrades to STARTTLS)
+  // Generic SMTP (Brevo, Mailgun, etc.)
+  const host = process.env.SMTP_HOST;
+  const port = parseInt(process.env.SMTP_PORT || '587');
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS || process.env.SMTP_APP_PASSWORD;
+
+  if (!host || !user || !pass) {
+    throw new Error('For generic SMTP, SMTP_HOST, SMTP_USER, and SMTP_PASS must be set in environment');
+  }
+
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465, // true only for port 465
     auth: { user, pass },
+    // Important: prevents TLS errors on some providers
+    tls: { rejectUnauthorized: false },
     connectionTimeout: 10000, // 10 seconds
     greetingTimeout: 10000,
     socketTimeout: 10000,
   });
+}
 
+function getTransporter(): nodemailer.Transporter {
+  if (!transporter) transporter = createTransporter();
   return transporter;
 }
 
@@ -121,8 +142,9 @@ export async function sendOtpEmail(toEmail: string, otp: string): Promise<void> 
 
   // Fallback to SMTP
   const transport = getTransporter();
+  const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@codexai.app';
   await transport.sendMail({
-    from: `"CodeBase" <${process.env.SMTP_USER}>`,
+    from: `"CodeBase" <${fromAddress}>`,
     to: toEmail,
     subject,
     text,
@@ -163,12 +185,28 @@ export async function sendPasswordResetEmail(toEmail: string, resetUrl: string):
 
   // Fallback to SMTP
   const transport = getTransporter();
+  const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@codexai.app';
   await transport.sendMail({
-    from: `"CodeBase" <${process.env.SMTP_USER}>`,
+    from: `"CodeBase" <${fromAddress}>`,
     to: toEmail,
     subject,
     text,
     html,
   });
+}
+
+// Test email config on server startup — logs result, doesn't crash server
+export async function verifyEmailConfig(): Promise<void> {
+  if (process.env.RESEND_API_KEY) {
+    console.log('[Email] Resend API Key is set; using Resend HTTPS API as primary.');
+    return;
+  }
+  try {
+    await getTransporter().verify();
+    console.log('[Email] SMTP connection verified successfully');
+  } catch (err) {
+    console.error('[Email] SMTP connection FAILED:', err);
+    console.error('[Email] OTP and reset emails will not work until SMTP or Resend is fixed');
+  }
 }
 

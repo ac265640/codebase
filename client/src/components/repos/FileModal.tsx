@@ -9,9 +9,10 @@ interface FileModalProps {
   repoId: string;
   filePath: string | null;
   onClose: () => void;
+  isGuest?: boolean;
 }
 
-export function FileModal({ repoId, filePath, onClose }: FileModalProps) {
+export function FileModal({ repoId, filePath, onClose, isGuest }: FileModalProps) {
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -26,7 +27,8 @@ export function FileModal({ repoId, filePath, onClose }: FileModalProps) {
       setError(false);
       setContent('');
       try {
-        const res = await api.get(`/repos/${repoId}/file`, { params: { path: filePath } });
+        const url = isGuest ? `/guest/repos/${repoId}/file` : `/repos/${repoId}/file`;
+        const res = await api.get(url, { params: { path: filePath } });
         if (mounted) {
           setContent(res.data.content);
         }

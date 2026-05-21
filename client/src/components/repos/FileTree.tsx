@@ -15,15 +15,17 @@ interface FileTreeNode {
 
 interface FileTreeProps {
   repoId: string;
+  isGuest?: boolean;
 }
 
-export function FileTree({ repoId }: FileTreeProps) {
+export function FileTree({ repoId, isGuest }: FileTreeProps) {
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
 
   const { data: tree, isLoading, isError, refetch } = useQuery({
-    queryKey: ['repos', repoId, 'files'],
+    queryKey: ['repos', repoId, 'files', isGuest],
     queryFn: async () => {
-      const res = await api.get(`/repos/${repoId}/files`);
+      const url = isGuest ? `/guest/repos/${repoId}/files` : `/repos/${repoId}/files`;
+      const res = await api.get(url);
       return res.data as FileTreeNode;
     },
     enabled: !!repoId
@@ -63,6 +65,7 @@ export function FileTree({ repoId }: FileTreeProps) {
         repoId={repoId} 
         filePath={selectedFilePath} 
         onClose={() => setSelectedFilePath(null)} 
+        isGuest={isGuest}
       />
     </>
   );
