@@ -166,8 +166,8 @@ authRouter.get('/google',
   })
 );
 
-// GET /api/auth/google/callback
-authRouter.get('/google/callback',
+// GET /api/auth/google/callback and /api/auth/google/call
+authRouter.get(['/google/callback', '/google/call'],
   passport.authenticate('google', {
     session: false,
     failureRedirect: `${process.env.CLIENT_URL}/login?error=oauth_failed`,
@@ -194,8 +194,7 @@ authRouter.post('/verify-email', authenticate, async (req: Request, res: Respons
   if (user.isEmailVerified) return res.status(400).json({ error: 'Email already verified' });
 
   const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
-  const isMockOtp = otp === '123456';
-  if ((user.otpCode !== hashedOtp || !user.otpExpiresAt || user.otpExpiresAt < new Date()) && !isMockOtp) {
+  if (user.otpCode !== hashedOtp || !user.otpExpiresAt || user.otpExpiresAt < new Date()) {
     return res.status(400).json({ error: 'Invalid or expired code' });
   }
 
