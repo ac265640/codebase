@@ -51,10 +51,10 @@ app.use(cookieParser());
 import passport from './config/passport';
 app.use(passport.initialize());
 
-// Global rate limit — 200 requests per 15 min per IP
+// Global rate limit — 1000 requests per 15 min per IP
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
 }));

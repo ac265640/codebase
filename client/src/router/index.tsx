@@ -19,8 +19,12 @@ function Protected({ children }: { children: React.ReactNode }) {
 // This is critical for Google OAuth which redirects the browser, clearing in-memory state.
 function AuthHydration({ children }: { children: React.ReactNode }) {
   const { setUser, clearUser } = useAuthStore();
+  const anonymousPaths = ['/login', '/register', '/forgot-password', '/reset-password', '/'];
 
   useEffect(() => {
+    if (anonymousPaths.includes(window.location.pathname)) {
+      return;
+    }
     api.get('/auth/me')
       .then(res => setUser(res.data))
       .catch(() => clearUser());
