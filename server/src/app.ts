@@ -13,7 +13,7 @@ import { userRouter } from './routes/user';
 export const app = express();
 
 // Trust Render's proxy for correct IP in rate limiting
-app.set('trust proxy', 1);
+app.set('trust proxy', true);
 
 app.use(helmet());
 const allowedOrigins = [
@@ -51,12 +51,26 @@ app.use(cookieParser());
 import passport from './config/passport';
 app.use(passport.initialize());
 
-// Global rate limit — 1000 requests per 15 min per IP
+// Robust client IP key generator to avoid proxy conflation
+const getClientIp = (req: express.Request): string => {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    if (typeof forwarded === 'string') {
+      return forwarded.split(',')[0].trim();
+    } else if (Array.isArray(forwarded)) {
+      return forwarded[0].trim();
+    }
+  }
+  return req.ip || req.socket.remoteAddress || 'unknown-ip';
+};
+
+// Global rate limit — 10000 requests per 15 min per IP (raised for reliability)
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 1000,
+  max: 10000,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: getClientIp,
 }));
 
 // Forgot-password rate limit — max 3 reset requests per IP per hour
@@ -66,6 +80,7 @@ app.use('/api/auth/forgot-password', rateLimit({
   message: { error: 'Too many reset requests. Please wait before trying again.' },
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: getClientIp,
 }));
 
 app.use('/api/auth', authRouter);

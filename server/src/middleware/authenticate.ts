@@ -5,7 +5,7 @@ import { User } from '../models/User';
 
 export async function authenticate(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    // 1. Check for API key in Authorization Bearer header
+    // 1. Check for API key or JWT token in Authorization Bearer header
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const tokenValue = authHeader.substring(7);
@@ -15,6 +15,18 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
         if (user) {
           req.user = user;
           return next();
+        }
+      } else {
+        // Fallback JWT Bearer Token validation
+        try {
+          const payload = verifyAccessToken(tokenValue);
+          const user = await User.findById(payload.id).select('-passwordHash');
+          if (user) {
+            req.user = user;
+            return next();
+          }
+        } catch {
+          // Fall through to cookie verification
         }
       }
     }

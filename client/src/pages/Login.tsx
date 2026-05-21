@@ -33,7 +33,7 @@ export default function Login() {
 
     try {
       const res = await api.post('/auth/login', { email, password });
-      setUser(res.data.user);
+      setUser(res.data.user, res.data.accessToken, res.data.refreshToken);
       navigate('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Login failed. Please try again.');

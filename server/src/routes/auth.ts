@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { User, IUser } from '../models/User';
-import { setTokenCookies, clearTokenCookies, verifyRefreshToken, signAccessToken } from '../utils/tokens';
+import { setTokenCookies, clearTokenCookies, verifyRefreshToken, signAccessToken, signRefreshToken } from '../utils/tokens';
 import { authenticate } from '../middleware/authenticate';
 
 export const authRouter = Router();
@@ -54,9 +54,13 @@ authRouter.post('/register', async (req: Request, res: Response) => {
     console.log(`-----------------------------------------\n`);
     sendOtpEmail(user.email, otp).catch((e) => console.error('Failed to send registration OTP email:', e));
 
+    const access = signAccessToken(user._id.toString());
+    const refresh = signRefreshToken(user._id.toString());
     setTokenCookies(res, user._id.toString());
     res.status(201).json({
-      user: { id: user._id, email: user.email, displayName: user.displayName, isEmailVerified: user.isEmailVerified }
+      user: { id: user._id, email: user.email, displayName: user.displayName, isEmailVerified: user.isEmailVerified },
+      accessToken: access,
+      refreshToken: refresh,
     });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -85,9 +89,13 @@ authRouter.post('/login', async (req: Request, res: Response) => {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
+    const access = signAccessToken(user._id.toString());
+    const refresh = signRefreshToken(user._id.toString());
     setTokenCookies(res, user._id.toString());
     res.json({
-      user: { id: user._id, email: user.email, displayName: user.displayName, isEmailVerified: user.isEmailVerified }
+      user: { id: user._id, email: user.email, displayName: user.displayName, isEmailVerified: user.isEmailVerified },
+      accessToken: access,
+      refreshToken: refresh,
     });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -97,13 +105,14 @@ authRouter.post('/login', async (req: Request, res: Response) => {
 // POST /api/auth/refresh
 authRouter.post('/refresh', (req: Request, res: Response) => {
   try {
-    const token = req.cookies?.refresh_token;
+    const token = req.cookies?.refresh_token || req.body?.refreshToken;
     if (!token) {
       res.status(401).json({ error: 'No refresh token' });
       return;
     }
     const payload = verifyRefreshToken(token);
     const newAccess = signAccessToken(payload.id);
+    const newRefresh = signRefreshToken(payload.id);
     const isProd = process.env.NODE_ENV === 'production';
     res.cookie('access_token', newAccess, {
       httpOnly: true,
@@ -111,7 +120,17 @@ authRouter.post('/refresh', (req: Request, res: Response) => {
       sameSite: isProd ? 'none' : 'lax',
       maxAge: 15 * 60 * 1000,
     });
-    res.json({ ok: true });
+    res.cookie('refresh_token', newRefresh, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+    res.json({
+      ok: true,
+      accessToken: newAccess,
+      refreshToken: newRefresh,
+    });
   } catch {
     res.status(401).json({ error: 'Invalid refresh token' });
   }
@@ -159,8 +178,10 @@ authRouter.get('/google/callback',
       res.redirect(`${process.env.CLIENT_URL}/login?error=oauth_failed`);
       return;
     }
+    const access = signAccessToken(user._id.toString());
+    const refresh = signRefreshToken(user._id.toString());
     setTokenCookies(res, user._id.toString());
-    res.redirect(`${process.env.CLIENT_URL}/dashboard`);
+    res.redirect(`${process.env.CLIENT_URL}/dashboard?access_token=${access}&refresh_token=${refresh}`);
   }
 );
 

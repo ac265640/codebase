@@ -35,7 +35,7 @@ CodeBase is a premium, state-of-the-art developer platform that allows you to in
 - 🧠 **Intelligent RAG (Retrieval-Augmented Generation)**: Ask complex architectural questions about the codebase and get precise, detailed answers backed by exact file-level source citations.
 - ⚡ **Real-Time Progress Ingestion**: Watch the ingestion pipeline (Cloning ➡️ Parsing ➡️ Semantic Vector Embedding) live via robust Socket.IO websocket feeds.
 - 📁 **Interactive Code Explorer**: Browse the complete repository directory structure and view raw source code with an integrated syntax highlighter.
-- 🔐 **Enterprise-Grade Authentication**: Secure JWT tokens with HttpOnly, SameSite cookie sessions and Google OAuth via Passport.js.
+- 🔐 **Enterprise-Grade Auth & Cookie Fallback**: Secure JWT tokens with HttpOnly, SameSite cookie sessions and Google OAuth via Passport.js, integrated with a smart, persistent LocalStorage header fallback to guarantee absolute session reliability even on browsers that block third-party cross-origin cookies.
 - 📨 **Nodemailer OTP Email Verification**: Self-service registration security verified with secure email OTP tokens.
 - 💳 **SaaS Billing Engine**: Integrated Stripe subscription plans with metered API usage tracking.
 - 🤖 **Multi-LLM Fallback Strategy**: Automatically fails over from Cohere Command-R to Google Gemini 1.5 Flash if rate limits are exceeded, ensuring zero downtime.

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { useAuthStore } from '../store/authStore';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL + '/api',
@@ -14,6 +15,13 @@ api.interceptors.request.use(config => {
   slowRequestTimer = setTimeout(() => {
     window.dispatchEvent(new CustomEvent('api-slow'));
   }, 5000);
+
+  // Inject Authorization: Bearer token if it exists in the Zustand store
+  const token = useAuthStore.getState().accessToken;
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
   return config;
 });
 
@@ -35,16 +43,27 @@ api.interceptors.response.use(
     refreshing = true;
     error.config._retry = true;
     try {
-      await axios.post(
+      const state = useAuthStore.getState();
+      const res = await axios.post(
         import.meta.env.VITE_API_URL + '/api/auth/refresh',
-        {},
+        { refreshToken: state.refreshToken },
         { withCredentials: true }
       );
+      
+      const { accessToken: newAccess, refreshToken: newRefresh } = res.data;
+      
+      // Update store with new tokens
+      state.setUser(state.user!, newAccess, newRefresh);
+      
+      // Retry the failed request with the new access token
+      error.config.headers.Authorization = `Bearer ${newAccess}`;
+      
       queue.forEach(fn => fn());
       queue = [];
       return api(error.config);
     } catch {
       queue = [];
+      useAuthStore.getState().clearUser();
       window.location.href = '/login';
     } finally {
       refreshing = false;
