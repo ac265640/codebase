@@ -1,4 +1,4 @@
-# CodeBase — AI-Powered Codebase RAG Platform 🚀
+# CodeBase — AI-Powered Codebase RAG Platform 
 
 [![Stack](https://img.shields.io/badge/Stack-React%20%7C%20Express%20%7C%20TypeScript-blue.svg?style=for-the-badge&logo=react)](https://react.dev)
 [![Database](https://img.shields.io/badge/Database-MongoDB%20%7C%20Redis-green.svg?style=for-the-badge&logo=mongodb)](https://mongodb.com)
